@@ -1,0 +1,49 @@
+{
+  "project_info": {
+    "project_number": "146177545179",
+    "firebase_url": "https://iattendance-backup-115dc-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "project_id": "iattendance-backup-115dc",
+    "storage_bucket": "iattendance-backup-115dc.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:146177545179:android:e6f36959365c8f2ac80dfe",
+        "android_client_info": {
+          "package_name": "com.example.iattendance"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDG_QilgV5SucQqopQjMSn6WI8wwCr1pmc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:146177545179:android:e1503ac934b95841c80dfe",
+        "android_client_info": {
+          "package_name": "com.example.myapplication"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDG_QilgV5SucQqopQjMSn6WI8wwCr1pmc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

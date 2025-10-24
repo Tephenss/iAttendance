@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Login Screen -->
+    <string name="app_name">iAttendance</string>
+    <string name="welcome_text">Welcome to\niAttendance</string>
+    <string name="subtitle_text">Laguna University Attendance Management System</string>
+    <string name="id_label">ID</string>
+    <string name="password_label">PASSWORD</string>
+    <string name="id_hint">ID</string>
+    <string name="password_hint">Password</string>
+    <string name="login_button">LOGIN</string>
+    <string name="recover_account">Recover My Account?</string>
+    
+    <!-- Recovery Dialog -->
+    <string name="recovery_title">Account Recovery</string>
+    <string name="recovery_message">To recover or change your account credentials, please proceed to our website.</string>
+    <string name="recovery_note">Note: For security purposes, account recovery is only available through our official website.</string>
+    <string name="ok_button">OK</string>
+    
+    <!-- Info Dialog -->
+    <string name="info_title">Important Notice</string>
+    <string name="info_message">This is not the official app of Laguna University. This app is for project purposes only.</string>
+    <string name="info_note">📚 This system is only used inside of Laguna University campus for educational and project demonstration purposes.</string>
+    
+    <!-- Loading Screen -->
+    <string name="loading_text">Loading...</string>
+    
+    <!-- Accessibility -->
+    <string name="laguna_logo_description">Laguna University Logo</string>
+    <string name="id_input_description">Enter your user ID</string>
+    <string name="password_input_description">Enter your password</string>
+    <string name="login_button_description">Tap to login to your account</string>
+    <string name="recover_button_description">Tap to recover your account</string>
+    <string name="info_button_description">Tap to view important app information</string>
+</resources>
