@@ -32,4 +32,8 @@
     <string name="login_button_description">Tap to login to your account</string>
     <string name="recover_button_description">Tap to recover your account</string>
     <string name="info_button_description">Tap to view important app information</string>
+    
+    <!-- Navigation Drawer -->
+    <string name="navigation_drawer_open">Open navigation drawer</string>
+    <string name="navigation_drawer_close">Close navigation drawer</string>
 </resources>

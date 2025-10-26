@@ -4,15 +4,15 @@
     <color name="white">#FFFFFFFF</color>
     
     <!-- iAttendance Website Colors -->
-    <color name="primary_green">#00b341</color>
-    <color name="green_primary">#00b341</color>
-    <color name="primary_green_dark">#009938</color>
-    <color name="primary_green_light">#5be584</color>
+    <color name="primary_green">#2196F3</color>
+    <color name="green_primary">#2196F3</color>
+    <color name="primary_green_dark">#1976D2</color>
+    <color name="primary_green_light">#64B5F6</color>
     <color name="background_gray">#f8f9fa</color>
     <color name="text_primary">#000000</color>
     <color name="text_secondary">#666666</color>
     <color name="border_gray">#dddddd</color>
-    <color name="border_green">#00b341</color>
+    <color name="border_green">#2196F3</color>
     <color name="error_red">#dc3545</color>
     <color name="success_green">#28a745</color>
     <color name="warning_orange">#ffc107</color>

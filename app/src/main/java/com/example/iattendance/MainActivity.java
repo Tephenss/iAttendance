@@ -47,16 +47,24 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         EdgeToEdge.enable(this);
         setContentView(R.layout.activity_main);
-        
+
+        // Check if user is already logged in
+        SessionManager sessionManager = new SessionManager(this);
+        if (sessionManager.isLoggedIn()) {
+            // User is logged in, navigate to appropriate dashboard
+            navigateToDashboard(sessionManager);
+            return;
+        }
+
         // Initialize views
         initViews();
-        
+
         // Initialize Firebase Auth Helper
         firebaseAuthHelper = new FirebaseAuthHelper(this);
-        
+
         // Set up click listeners
         setupClickListeners();
-        
+
         ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main), (v, insets) -> {
             Insets systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
             v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom);
@@ -130,6 +138,10 @@ public class MainActivity extends AppCompatActivity {
                 runOnUiThread(() -> {
                     loginButton.setEnabled(true);
                     loginButton.setText("LOGIN");
+
+                    // Create login session
+                    SessionManager sessionManager = new SessionManager(MainActivity.this);
+                    sessionManager.createLoginSession(userId, userType, fullName, email);
 
                     // Navigate to email verification with smooth transition
                     Intent intent = new Intent(MainActivity.this, EmailVerificationActivity.class);
@@ -300,16 +312,42 @@ public class MainActivity extends AppCompatActivity {
         if (welcomeText != null) {
             String fullText = getString(R.string.welcome_text);
             SpannableString spannableString = new SpannableString(fullText);
-            
+
             // Find "iAttendance" in the text and make it green
             int startIndex = fullText.indexOf("iAttendance");
             if (startIndex != -1) {
                 int endIndex = startIndex + "iAttendance".length();
-                spannableString.setSpan(new ForegroundColorSpan(android.graphics.Color.parseColor("#00b341")), 
+                spannableString.setSpan(new ForegroundColorSpan(android.graphics.Color.parseColor("#00b341")),
                     startIndex, endIndex, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
             }
-            
+
             welcomeText.setText(spannableString);
         }
+    }
+
+    private void navigateToDashboard(SessionManager sessionManager) {
+        String userType = sessionManager.getUserType();
+        String userId = sessionManager.getUserId();
+        String fullName = sessionManager.getFullName();
+        String email = sessionManager.getEmail();
+
+        Intent intent;
+        if ("student".equals(userType)) {
+            intent = new Intent(this, StudentDashboardActivity.class);
+        } else if ("teacher".equals(userType)) {
+            intent = new Intent(this, TeacherDashboardActivity.class);
+        } else if ("admin".equals(userType)) {
+            intent = new Intent(this, AdminDashboardActivity.class);
+        } else {
+            // Fallback to login if user type is invalid
+            return;
+        }
+
+        intent.putExtra("userId", userId);
+        intent.putExtra("userType", userType);
+        intent.putExtra("fullName", fullName);
+        intent.putExtra("email", email);
+        startActivity(intent);
+        finish();
     }
 }
