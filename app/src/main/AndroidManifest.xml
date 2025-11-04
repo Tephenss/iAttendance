@@ -48,6 +48,14 @@
         <activity
             android:name=".AdminDashboardActivity"
             android:exported="false" />
+            
+        <activity
+            android:name=".TimetableActivity"
+            android:exported="false" />
+            
+        <activity
+            android:name=".TeacherTimetableActivity"
+            android:exported="false" />
     </application>
 
 </manifest>

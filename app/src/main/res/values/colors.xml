@@ -24,4 +24,8 @@
     <color name="background_primary">#f8f9fa</color>
     <color name="surface_primary">#ffffff</color>
     <color name="surface_secondary">#f1f3f4</color>
+    
+    <!-- Navigation menu -->
+    <color name="nav_menu_background">#ffffff</color>
+    <color name="nav_menu_item_text">#212121</color>
 </resources>

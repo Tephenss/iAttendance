@@ -3,6 +3,7 @@ package com.example.iattendance;
 import android.content.Intent;
 import android.os.Bundle;
 import android.view.MenuItem;
+import android.widget.PopupMenu;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -18,8 +19,6 @@ public class TeacherDashboardActivity extends AppCompatActivity implements Navig
     private DrawerLayout drawerLayout;
     private NavigationView navigationView;
     private SessionManager sessionManager;
-    private android.os.Handler inactivityHandler;
-    private Runnable logoutRunnable;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -29,24 +28,15 @@ public class TeacherDashboardActivity extends AppCompatActivity implements Navig
         // Initialize session manager
         sessionManager = new SessionManager(this);
 
-        // Setup inactivity timer
-        setupInactivityTimer();
-
         // Setup drawer
         drawerLayout = findViewById(R.id.drawer_layout);
         navigationView = findViewById(R.id.nav_view);
 
         // Setup hamburger menu icon
-        findViewById(R.id.menu_icon).setOnClickListener(v -> {
-            resetInactivityTimer();
-            drawerLayout.openDrawer(GravityCompat.START);
-        });
+        findViewById(R.id.menu_icon).setOnClickListener(v -> drawerLayout.openDrawer(GravityCompat.START));
 
         // Setup three dots menu icon
-        findViewById(R.id.more_icon).setOnClickListener(v -> {
-            resetInactivityTimer();
-            onOptionsIconClick();
-        });
+        findViewById(R.id.more_icon).setOnClickListener(v -> onOptionsIconClick());
 
         // Don't use ActionBarDrawerToggle since we're using custom toolbar
         // Just setup the drawer listener
@@ -80,7 +70,7 @@ public class TeacherDashboardActivity extends AppCompatActivity implements Navig
                 TextView navEmail = headerView.findViewById(R.id.nav_header_email);
 
                 if (navName != null) navName.setText(fullName);
-                if (navEmail != null) navEmail.setText(email);
+                if (navEmail != null) navEmail.setText("ID: " + userId);
             }
         });
 
@@ -98,27 +88,28 @@ public class TeacherDashboardActivity extends AppCompatActivity implements Navig
 
     @Override
     public boolean onNavigationItemSelected(@NonNull MenuItem item) {
-        resetInactivityTimer();
-
         int id = item.getItemId();
 
         if (id == R.id.nav_dashboard) {
-            // Dashboard selected
-            Toast.makeText(this, "Dashboard", Toast.LENGTH_SHORT).show();
-        } else if (id == R.id.nav_logout) {
-            // Logout selected
-            performLogout();
+            // Dashboard selected (already on dashboard)
+            drawerLayout.closeDrawer(GravityCompat.START);
+            return true;
+        } else if (id == R.id.nav_timetable) {
+            Intent intent = new Intent(this, TeacherTimetableActivity.class);
+            intent.putExtra("userId", getIntent().getStringExtra("userId"));
+            intent.putExtra("userType", getIntent().getStringExtra("userType"));
+            intent.putExtra("fullName", getIntent().getStringExtra("fullName"));
+            intent.putExtra("email", getIntent().getStringExtra("email"));
+            startActivity(intent);
+            drawerLayout.closeDrawer(GravityCompat.START);
             return true;
         }
 
-        drawerLayout.closeDrawer(GravityCompat.START);
-        return true;
+        return false;
     }
 
     @Override
     public void onBackPressed() {
-        resetInactivityTimer();
-
         if (drawerLayout.isDrawerOpen(GravityCompat.START)) {
             drawerLayout.closeDrawer(GravityCompat.START);
         } else {
@@ -126,56 +117,32 @@ public class TeacherDashboardActivity extends AppCompatActivity implements Navig
         }
     }
 
-    @Override
-    public boolean onTouchEvent(android.view.MotionEvent event) {
-        resetInactivityTimer();
-        return super.onTouchEvent(event);
-    }
-
-    @Override
-    protected void onResume() {
-        super.onResume();
-        resetInactivityTimer();
-    }
-
-    @Override
-    protected void onPause() {
-        super.onPause();
-        stopInactivityTimer();
-    }
-
-    @Override
-    protected void onDestroy() {
-        super.onDestroy();
-        stopInactivityTimer();
-    }
-
     @SuppressWarnings("StatementWithEmptyBody")
     public void onOptionsIconClick() {
-        // Handle three dots menu click if needed
-        Toast.makeText(this, "Options", Toast.LENGTH_SHORT).show();
-    }
-
-    private void setupInactivityTimer() {
-        inactivityHandler = new android.os.Handler();
-        logoutRunnable = () -> {
-            Toast.makeText(this, "Session expired due to inactivity", Toast.LENGTH_LONG).show();
-            performLogout();
-        };
-        resetInactivityTimer();
-    }
-
-    private void resetInactivityTimer() {
-        inactivityHandler.removeCallbacks(logoutRunnable);
-        inactivityHandler.postDelayed(logoutRunnable, 5 * 60 * 1000); // 5 minutes
-        sessionManager.updateActivity();
-    }
-
-    private void stopInactivityTimer() {
-        if (inactivityHandler != null) {
-            inactivityHandler.removeCallbacks(logoutRunnable);
+        // Show popup menu from the more_icon view
+        android.view.View moreIcon = findViewById(R.id.more_icon);
+        if (moreIcon != null) {
+            showPopupMenu(moreIcon);
         }
     }
+    
+    private void showPopupMenu(android.view.View view) {
+        android.widget.PopupMenu popupMenu = new android.widget.PopupMenu(new android.view.ContextThemeWrapper(this, R.style.PopupMenuStyle), view);
+        popupMenu.getMenuInflater().inflate(R.menu.toolbar_menu, popupMenu.getMenu());
+        
+        popupMenu.setGravity(android.view.Gravity.END);
+        
+        popupMenu.setOnMenuItemClickListener(item -> {
+            if (item.getItemId() == R.id.menu_logout) {
+                performLogout();
+                return true;
+            }
+            return false;
+        });
+        
+        popupMenu.show();
+    }
+
 
     private void performLogout() {
         sessionManager.logout();

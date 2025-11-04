@@ -8,10 +8,5 @@
             android:title="Dashboard" />
     </group>
 
-    <item
-        android:id="@+id/nav_logout"
-        android:icon="@drawable/ic_lock"
-        android:title="Logout" />
-
 </menu>
 

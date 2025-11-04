@@ -105,10 +105,6 @@ public class AdminDashboardActivity extends AppCompatActivity implements Navigat
         if (id == R.id.nav_dashboard) {
             // Dashboard selected
             Toast.makeText(this, "Dashboard", Toast.LENGTH_SHORT).show();
-        } else if (id == R.id.nav_logout) {
-            // Logout selected
-            performLogout();
-            return true;
         }
 
         drawerLayout.closeDrawer(GravityCompat.START);
@@ -168,7 +164,6 @@ public class AdminDashboardActivity extends AppCompatActivity implements Navigat
     private void resetInactivityTimer() {
         inactivityHandler.removeCallbacks(logoutRunnable);
         inactivityHandler.postDelayed(logoutRunnable, 5 * 60 * 1000); // 5 minutes
-        sessionManager.updateActivity();
     }
 
     private void stopInactivityTimer() {

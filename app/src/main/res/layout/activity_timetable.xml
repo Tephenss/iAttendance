@@ -6,7 +6,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#fdf1e8"
-    tools:context=".StudentDashboardActivity">
+    tools:context=".TimetableActivity">
 
     <!-- Main content -->
     <LinearLayout
@@ -72,7 +72,36 @@
                 android:background="?attr/selectableItemBackgroundBorderless" />
         </LinearLayout>
 
-        <!-- Scrollable Content -->
+        <!-- Page Title -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="20dp"
+            android:paddingBottom="12dp">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="My Timetable"
+                android:textColor="@color/text_primary"
+                android:textSize="24sp"
+                android:textStyle="bold" />
+
+            <!-- Current Day Indicator -->
+            <TextView
+                android:id="@+id/currentDayIndicator"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Monday"
+                android:textColor="#00b341"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:paddingTop="8dp" />
+
+        </LinearLayout>
+
+        <!-- Timetable Content -->
         <androidx.core.widget.NestedScrollView
             android:layout_width="match_parent"
             android:layout_height="match_parent"
@@ -82,119 +111,50 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
-                android:padding="20dp">
+                android:padding="16dp">
 
-                <!-- Welcome Banner -->
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:background="#00b341"
-                    android:orientation="vertical"
-                    android:gravity="center"
-                    android:padding="40dp"
-                    android:layout_marginBottom="20dp"
-                    android:elevation="4dp">
-
-                    <ImageView
-                        android:id="@+id/logoImageView"
-                        android:layout_width="120dp"
-                        android:layout_height="120dp"
-                        android:src="@drawable/laguna_logo2"
-                        android:scaleType="centerInside"
-                        android:contentDescription="@string/laguna_logo_description" />
-
-                    <TextView
-                        android:id="@+id/welcomeText"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Welcome to iAttendance"
-                        android:textColor="#ffffff"
-                        android:textSize="24sp"
-                        android:textStyle="bold"
-                        android:layout_marginTop="16dp"
-                        android:gravity="center" />
-
-                    <TextView
-                        android:id="@+id/userInfoText"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Student Dashboard"
-                        android:textColor="#ffffff"
-                        android:textSize="16sp"
-                        android:layout_marginTop="8dp"
-                        android:gravity="center" />
-                </LinearLayout>
-
-                <!-- Announcements Section -->
-                <TextView
+                <!-- Loading indicator -->
+                <ProgressBar
+                    android:id="@+id/loadingProgress"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="📢 Announcements"
-                    android:textColor="@color/text_primary"
-                    android:textSize="18sp"
-                    android:textStyle="bold"
-                    android:layout_marginBottom="12dp" />
+                    android:layout_gravity="center"
+                    android:visibility="gone" />
 
+                <!-- Timetable Card -->
                 <androidx.cardview.widget.CardView
+                    android:id="@+id/timetableCard"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginBottom="20dp"
                     app:cardCornerRadius="8dp"
                     app:cardElevation="2dp"
                     app:cardBackgroundColor="#ffffff">
 
-                    <LinearLayout
+                    <HorizontalScrollView
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:orientation="vertical"
-                        android:padding="16dp">
+                        android:scrollbars="horizontal">
 
-                        <TextView
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:text="No announcements yet"
-                            android:textColor="@color/text_primary"
-                            android:textSize="16sp"
-                            android:textStyle="bold"
-                            android:layout_marginBottom="8dp" />
-
-                        <TextView
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:text="Check back later for important updates and announcements."
-                            android:textColor="@color/text_secondary"
-                            android:textSize="14sp"
-                            android:lineSpacingMultiplier="1.3" />
-                    </LinearLayout>
+                        <TableLayout
+                            android:id="@+id/timetableTable"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content">
+                            <!-- Table will be populated dynamically -->
+                        </TableLayout>
+                    </HorizontalScrollView>
                 </androidx.cardview.widget.CardView>
 
-                <!-- My Classes -->
-                <LinearLayout
+                <!-- Empty state -->
+                <TextView
+                    android:id="@+id/emptyStateText"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:background="#00b341"
-                    android:orientation="horizontal"
-                    android:gravity="center_vertical"
-                    android:padding="16dp"
-                    android:layout_marginTop="20dp"
-                    android:elevation="4dp">
-
-                    <TextView
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="My Classes"
-                        android:textColor="#ffffff"
-                        android:textSize="18sp"
-                        android:textStyle="bold" />
-
-                    <ImageView
-                        android:layout_width="32dp"
-                        android:layout_height="32dp"
-                        android:src="@drawable/ic_dashboard"
-                        android:tint="#ffffff" />
-                </LinearLayout>
-
+                    android:text="No timetable data available"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="16sp"
+                    android:gravity="center"
+                    android:padding="32dp"
+                    android:visibility="gone" />
             </LinearLayout>
         </androidx.core.widget.NestedScrollView>
     </LinearLayout>

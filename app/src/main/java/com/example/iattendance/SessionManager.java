@@ -12,7 +12,7 @@ public class SessionManager {
     private static final String KEY_USER_TYPE = "userType";
     private static final String KEY_FULL_NAME = "fullName";
     private static final String KEY_EMAIL = "email";
-    private static final String KEY_LOGIN_TIME = "loginTime";
+    private static final String KEY_LAST_ACTIVE_TIME = "lastActiveTime";
     private static final long SESSION_TIMEOUT = 5 * 60 * 1000; // 5 minutes in milliseconds
 
     private SharedPreferences pref;
@@ -32,17 +32,17 @@ public class SessionManager {
         editor.putString(KEY_USER_TYPE, userType);
         editor.putString(KEY_FULL_NAME, fullName);
         editor.putString(KEY_EMAIL, email);
-        editor.putLong(KEY_LOGIN_TIME, System.currentTimeMillis());
+        editor.putLong(KEY_LAST_ACTIVE_TIME, System.currentTimeMillis());
         editor.commit();
     }
 
     public boolean isLoggedIn() {
         boolean isLoggedIn = pref.getBoolean(KEY_IS_LOGGED_IN, false);
         if (isLoggedIn) {
-            long loginTime = pref.getLong(KEY_LOGIN_TIME, 0);
+            long lastActiveTime = pref.getLong(KEY_LAST_ACTIVE_TIME, 0);
             long currentTime = System.currentTimeMillis();
-            if (currentTime - loginTime > SESSION_TIMEOUT) {
-                Log.d(TAG, "Session expired");
+            if (currentTime - lastActiveTime > SESSION_TIMEOUT) {
+                Log.d(TAG, "Session expired due to inactivity");
                 logout();
                 return false;
             }
@@ -72,9 +72,9 @@ public class SessionManager {
         editor.commit();
     }
 
-    public void updateActivity() {
-        // Update login time to current time to reset inactivity timer
-        editor.putLong(KEY_LOGIN_TIME, System.currentTimeMillis());
+    public void updateLastActiveTime() {
+        // Update last active time to current time
+        editor.putLong(KEY_LAST_ACTIVE_TIME, System.currentTimeMillis());
         editor.commit();
     }
 }
