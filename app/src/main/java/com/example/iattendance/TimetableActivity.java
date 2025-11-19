@@ -54,6 +54,10 @@ public class TimetableActivity extends AppCompatActivity implements NavigationVi
     private String studentSection;
     private String studentCourse; // Course code like "BSIT"
     private String studentCourseId; // Course ID from courses table
+    
+    private long currentSnapshotTimestamp = 0; // Track snapshot timestamps to ignore stale async operations
+    private ValueEventListener timetableListener; // Store listener reference to prevent garbage collection
+    private DatabaseReference timetableRef; // Store reference to prevent detachment
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -349,26 +353,80 @@ public class TimetableActivity extends AppCompatActivity implements NavigationVi
         String path = paths[index];
         Log.d(TAG, "Trying to fetch timetable from path: " + path);
         
-        DatabaseReference timetableRef = FirebaseDatabase.getInstance().getReference(path);
+        // Remove old listener if exists to prevent multiple listeners
+        if (timetableRef != null && timetableListener != null) {
+            Log.d(TAG, "Removing old timetable listener");
+            timetableRef.removeEventListener(timetableListener);
+        }
+        
+        timetableRef = FirebaseDatabase.getInstance().getReference(path);
 
         // Use addValueEventListener for real-time updates instead of addListenerForSingleValueEvent
-        timetableRef.addValueEventListener(new ValueEventListener() {
+        timetableListener = new ValueEventListener() {
             @Override
             public void onDataChange(@NonNull DataSnapshot snapshot) {
+                // Generate unique timestamp for this snapshot to track async operations
+                final long snapshotTimestamp = System.currentTimeMillis();
+                currentSnapshotTimestamp = snapshotTimestamp;
+                
+                Log.d(TAG, "========================================");
+                Log.d(TAG, "Firebase onDataChange triggered (timestamp: " + snapshotTimestamp + ")");
                 Log.d(TAG, path + " snapshot exists: " + snapshot.exists());
                 Log.d(TAG, path + " children count: " + snapshot.getChildrenCount());
+                Log.d(TAG, "========================================");
+
+                // Note: We just set currentSnapshotTimestamp = snapshotTimestamp above,
+                // so this check will always pass. But we keep it for consistency with async operations.
 
                 if (!snapshot.exists() || snapshot.getChildrenCount() == 0) {
-                    // Try next path
-                    tryFetchTimetableFromPath(paths, index + 1);
+                    // Show empty state if no entries
+                    Log.d(TAG, "No timetable entries found in Firebase snapshot");
+                    runOnUiThread(() -> {
+                        // Double-check snapshot is still current before updating UI
+                        if (currentSnapshotTimestamp == snapshotTimestamp) {
+                            loadingProgress.setVisibility(View.GONE);
+                            showEmptyState();
+                        } else {
+                            Log.d(TAG, "⚠ Ignoring empty state update - snapshot changed");
+                        }
+                    });
                     return;
                 }
 
-                List<TimetableEntry> entries = new ArrayList<>();
+                // Clear existing entries list for fresh fetch on each update
+                final List<TimetableEntry> entries = new ArrayList<>();
                 int totalEntries = (int) snapshot.getChildrenCount();
                 final int[] processedCount = {0};
+                final Object lock = new Object(); // Lock for thread-safe operations
+                
+                // Store snapshot timestamp in final variable for async operations to use
+                final long thisSnapshotTimestamp = snapshotTimestamp;
+                
+                Log.d(TAG, "🔄 Starting to process " + totalEntries + " timetable entries from Firebase (snapshot: " + thisSnapshotTimestamp + ")");
+                Log.d(TAG, "Current snapshot timestamp: " + currentSnapshotTimestamp);
+
+                // Collect all entry keys and IDs first for logging and validation
+                List<String> entryKeys = new ArrayList<>();
+                List<String> entryIds = new ArrayList<>();
+                for (DataSnapshot entrySnapshot : snapshot.getChildren()) {
+                    entryKeys.add(entrySnapshot.getKey());
+                    DataSnapshot dataSnap = entrySnapshot.child("data");
+                    if (dataSnap.exists()) {
+                        String entryId = dataSnap.child("id").getValue(String.class);
+                        if (entryId != null) {
+                            entryIds.add(entryId);
+                        }
+                    }
+                }
+                Log.d(TAG, "📋 Entry keys in snapshot: " + entryKeys.toString());
+                Log.d(TAG, "📋 Entry IDs in snapshot: " + entryIds.toString());
 
                 for (DataSnapshot entrySnapshot : snapshot.getChildren()) {
+                    // Check if snapshot is still current before processing each entry
+                    if (currentSnapshotTimestamp != thisSnapshotTimestamp) {
+                        Log.d(TAG, "⚠ Snapshot changed during processing - stopping entry processing (current: " + currentSnapshotTimestamp + ", this: " + thisSnapshotTimestamp + ")");
+                        return;
+                    }
                     try {
                         Log.d(TAG, "Processing timetable key: " + entrySnapshot.getKey());
                         
@@ -376,11 +434,15 @@ public class TimetableActivity extends AppCompatActivity implements NavigationVi
                         DataSnapshot dataSnapshot = entrySnapshot.child("data");
                         
                         if (!dataSnapshot.exists()) {
-                            Log.d(TAG, "No data node found for entry: " + entrySnapshot.getKey());
-                            processedCount[0]++;
+                            Log.w(TAG, "⚠ No data node found for entry: " + entrySnapshot.getKey() + " - skipping");
+                            synchronized (lock) {
+                                processedCount[0]++;
+                                checkIfComplete(entries, totalEntries, processedCount[0], thisSnapshotTimestamp);
+                            }
                             continue;
                         }
 
+                        String timetableId = dataSnapshot.child("id").getValue(String.class);
                         String classId = dataSnapshot.child("class_id").getValue(String.class);
                         String courseId = dataSnapshot.child("course_id").getValue(String.class);
                         String dayOfWeek = dataSnapshot.child("day_of_week").getValue(String.class);
@@ -388,23 +450,29 @@ public class TimetableActivity extends AppCompatActivity implements NavigationVi
                         String endTime = dataSnapshot.child("end_time").getValue(String.class);
                         String room = dataSnapshot.child("room").getValue(String.class);
 
-                        Log.d(TAG, "Timetable entry details - classId: " + classId + ", courseId: " + courseId + ", day: " + dayOfWeek + 
-                              ", time: " + startTime + "-" + endTime + ", room: " + room);
+                        Log.d(TAG, "📋 Processing timetable entry - ID: " + timetableId + ", classId: " + classId + ", courseId: " + courseId + 
+                              ", day: " + dayOfWeek + ", time: " + startTime + "-" + endTime + ", room: " + room);
 
                         // STRICT FILTER: Course ID must match (if both are present)
                         // If student has course_id, timetable entry MUST have matching course_id
                         if (studentCourseId != null) {
                             if (courseId == null || !courseId.equals(studentCourseId)) {
                                 Log.d(TAG, "✗ Course ID filter failed - timetable: " + courseId + ", student: " + studentCourseId + ", skipping");
+                            synchronized (lock) {
                                 processedCount[0]++;
-                                continue;
-                            } else {
-                                Log.d(TAG, "✓ Course ID match - timetable: " + courseId + ", student: " + studentCourseId);
+                                checkIfComplete(entries, totalEntries, processedCount[0], thisSnapshotTimestamp);
                             }
+                            continue;
+                        } else {
+                            Log.d(TAG, "✓ Course ID match - timetable: " + courseId + ", student: " + studentCourseId);
+                        }
                         } else if (courseId != null) {
                             // If timetable has course_id but student doesn't, skip (strict matching)
                             Log.d(TAG, "✗ Course ID filter failed - timetable has course_id: " + courseId + " but student has no course_id, skipping");
-                            processedCount[0]++;
+                            synchronized (lock) {
+                                processedCount[0]++;
+                                checkIfComplete(entries, totalEntries, processedCount[0], thisSnapshotTimestamp);
+                            }
                             continue;
                         } else {
                             // Both are null, proceed to section/year_level check
@@ -414,14 +482,21 @@ public class TimetableActivity extends AppCompatActivity implements NavigationVi
                         if (classId != null) {
                             // Fetch class details from attendance_system
                             fetchClassDetailsFromAttendanceSystem(classId, dayOfWeek, startTime, endTime, room, entries, 
-                                    totalEntries, processedCount);
+                                    totalEntries, processedCount, lock, thisSnapshotTimestamp);
                         } else {
-                            Log.d(TAG, "ClassId is null for entry: " + entrySnapshot.getKey());
-                            processedCount[0]++;
+                            Log.w(TAG, "⚠ ClassId is null for entry: " + entrySnapshot.getKey() + " - skipping");
+                            synchronized (lock) {
+                                processedCount[0]++;
+                                checkIfComplete(entries, totalEntries, processedCount[0], thisSnapshotTimestamp);
+                            }
                         }
                     } catch (Exception e) {
-                        Log.e(TAG, "Error parsing timetable entry: " + e.getMessage());
-                        processedCount[0]++;
+                        Log.e(TAG, "✗ Error parsing timetable entry: " + entrySnapshot.getKey() + " - " + e.getMessage());
+                        e.printStackTrace();
+                        synchronized (lock) {
+                            processedCount[0]++;
+                            checkIfComplete(entries, totalEntries, processedCount[0], thisSnapshotTimestamp);
+                        }
                     }
                 }
             }
@@ -432,13 +507,17 @@ public class TimetableActivity extends AppCompatActivity implements NavigationVi
                 // Try next path
                 tryFetchTimetableFromPath(paths, index + 1);
             }
-        });
+        };
+        
+        // Attach listener and store reference
+        timetableRef.addValueEventListener(timetableListener);
+        Log.d(TAG, "Timetable listener attached to path: " + path);
     }
 
     private void fetchClassDetailsFromAttendanceSystem(String classId, String dayOfWeek, String startTime, String endTime, 
                                    String room, List<TimetableEntry> entries, int totalEntries, 
-                                   int[] processedCount) {
-        Log.d(TAG, "Fetching class details for classId: " + classId);
+                                   int[] processedCount, Object lock, long snapshotTimestamp) {
+        Log.d(TAG, "Fetching class details for classId: " + classId + " (snapshot: " + snapshotTimestamp + ")");
         
         // Skip class validation - directly fetch subject and teacher from classes
         // Using a simplified approach to match by year level and section
@@ -447,6 +526,12 @@ public class TimetableActivity extends AppCompatActivity implements NavigationVi
         classesRef.addListenerForSingleValueEvent(new ValueEventListener() {
             @Override
             public void onDataChange(@NonNull DataSnapshot snapshot) {
+                // Check if this is still the current snapshot (ignore if a new one has arrived)
+                if (currentSnapshotTimestamp != snapshotTimestamp) {
+                    Log.d(TAG, "Ignoring stale class fetch (current: " + currentSnapshotTimestamp + ", this: " + snapshotTimestamp + ")");
+                    return;
+                }
+                
                 boolean found = false;
                 
                 for (DataSnapshot classSnapshot : snapshot.getChildren()) {
@@ -483,8 +568,10 @@ public class TimetableActivity extends AppCompatActivity implements NavigationVi
                                 if (!yearLevelMatches) {
                                     Log.d(TAG, "✗ Year level mismatch - skipping entry (class: " + classYearLevel + " != student: " + studentYearLevel + ")");
                                 }
-                                processedCount[0]++;
-                                checkIfComplete(entries, totalEntries, processedCount[0]);
+                                synchronized (lock) {
+                                    processedCount[0]++;
+                                    checkIfComplete(entries, totalEntries, processedCount[0], snapshotTimestamp);
+                                }
                                 return;
                             }
                             
@@ -493,7 +580,7 @@ public class TimetableActivity extends AppCompatActivity implements NavigationVi
                             // Fetch subject and teacher details
                             Log.d(TAG, "Fetching subject and teacher details");
                             fetchSubjectAndTeacherFromAttendanceSystem(subjectId, teacherId, section, dayOfWeek, 
-                                    startTime, endTime, room, entries, totalEntries, processedCount);
+                                    startTime, endTime, room, entries, totalEntries, processedCount, lock, snapshotTimestamp);
                             break;
                         }
                     } catch (Exception e) {
@@ -503,16 +590,20 @@ public class TimetableActivity extends AppCompatActivity implements NavigationVi
                 
                 if (!found) {
                     Log.d(TAG, "Class " + classId + " not found, skipping entry");
-                    processedCount[0]++;
-                    checkIfComplete(entries, totalEntries, processedCount[0]);
+                    synchronized (lock) {
+                        processedCount[0]++;
+                        checkIfComplete(entries, totalEntries, processedCount[0], snapshotTimestamp);
+                    }
                 }
             }
             
             @Override
             public void onCancelled(@NonNull DatabaseError error) {
                 Log.e(TAG, "Error fetching classes: " + error.getMessage());
-                processedCount[0]++;
-                checkIfComplete(entries, totalEntries, processedCount[0]);
+                synchronized (lock) {
+                    processedCount[0]++;
+                    checkIfComplete(entries, totalEntries, processedCount[0], snapshotTimestamp);
+                }
             }
         });
     }
@@ -520,8 +611,7 @@ public class TimetableActivity extends AppCompatActivity implements NavigationVi
 
     private void fetchSubjectAndTeacherFromAttendanceSystem(String subjectId, String teacherId, String section, 
                                        String dayOfWeek, String startTime, String endTime, String room,
-                                       List<TimetableEntry> entries, int totalEntries, int[] processedCount) {
-        
+                                       List<TimetableEntry> entries, int totalEntries, int[] processedCount, Object lock, long snapshotTimestamp) {
         final String[] subjectCode = {null};
         final String[] subjectName = {null};
         final String[] teacherName = {null};
@@ -534,22 +624,30 @@ public class TimetableActivity extends AppCompatActivity implements NavigationVi
 
         // Fetch subject
         tryFetchSubject(subjectPaths, 0, subjectId, subjectCode, subjectName, yearLevel, fetchCount, 
-                       teacherName, section, dayOfWeek, startTime, endTime, room, entries, totalEntries, processedCount);
+                       teacherName, section, dayOfWeek, startTime, endTime, room, entries, totalEntries, processedCount, lock, snapshotTimestamp);
 
         // Fetch teacher
         tryFetchTeacher(teacherPaths, 0, teacherId, teacherName, fetchCount, 
-                       subjectCode, subjectName, yearLevel, section, dayOfWeek, startTime, endTime, room, entries, totalEntries, processedCount);
+                       subjectCode, subjectName, yearLevel, section, dayOfWeek, startTime, endTime, room, entries, totalEntries, processedCount, lock, snapshotTimestamp);
     }
 
     private void tryFetchSubject(String[] paths, int index, String subjectId, String[] subjectCode, String[] subjectName, String[] yearLevel,
                                 int[] fetchCount, String[] teacherName, String section, String dayOfWeek, String startTime, String endTime, 
-                                String room, List<TimetableEntry> entries, int totalEntries, int[] processedCount) {
+                                String room, List<TimetableEntry> entries, int totalEntries, int[] processedCount, Object lock, long snapshotTimestamp) {
+        
         if (index >= paths.length) {
             Log.d(TAG, "Subject not found in any path for subjectId: " + subjectId);
             fetchCount[0]++;
             if (fetchCount[0] == 2) {
-                processedCount[0]++;
-                checkIfComplete(entries, totalEntries, processedCount[0]);
+                synchronized (lock) {
+                    // Check if still current snapshot
+                    if (currentSnapshotTimestamp == snapshotTimestamp) {
+                        processedCount[0]++;
+                        checkIfComplete(entries, totalEntries, processedCount[0], snapshotTimestamp);
+                    } else {
+                        Log.d(TAG, "Ignoring stale subject fetch completion (current: " + currentSnapshotTimestamp + ", this: " + snapshotTimestamp + ")");
+                    }
+                }
             }
             return;
         }
@@ -560,6 +658,12 @@ public class TimetableActivity extends AppCompatActivity implements NavigationVi
         subjectsRef.addListenerForSingleValueEvent(new ValueEventListener() {
             @Override
             public void onDataChange(@NonNull DataSnapshot snapshot) {
+                // Check if this is still the current snapshot
+                if (currentSnapshotTimestamp != snapshotTimestamp) {
+                    Log.d(TAG, "Ignoring stale subject fetch (current: " + currentSnapshotTimestamp + ", this: " + snapshotTimestamp + ")");
+                    return;
+                }
+                
                 boolean found = false;
                 for (DataSnapshot subjectSnapshot : snapshot.getChildren()) {
                     try {
@@ -582,22 +686,35 @@ public class TimetableActivity extends AppCompatActivity implements NavigationVi
                 if (found) {
                     fetchCount[0]++;
                     if (fetchCount[0] == 2) {
-                        createTimetableEntry(subjectCode[0], subjectName[0], teacherName[0], yearLevel[0],
-                                section, dayOfWeek, startTime, endTime, room, entries, totalEntries, processedCount);
+                        // Double-check snapshot is still current before creating entry
+                        if (currentSnapshotTimestamp == snapshotTimestamp) {
+                            createTimetableEntry(subjectCode[0], subjectName[0], teacherName[0], yearLevel[0],
+                                    section, dayOfWeek, startTime, endTime, room, entries, totalEntries, processedCount, lock, snapshotTimestamp);
+                        } else {
+                            Log.d(TAG, "Ignoring stale subject/teacher fetch completion (current: " + currentSnapshotTimestamp + ", this: " + snapshotTimestamp + ")");
+                        }
                     }
                 } else {
-                    // Try next path
-                    tryFetchSubject(paths, index + 1, subjectId, subjectCode, subjectName, yearLevel, fetchCount, 
-                                   teacherName, section, dayOfWeek, startTime, endTime, room, entries, totalEntries, processedCount);
+                    // Try next path (only if still current snapshot)
+                    if (currentSnapshotTimestamp == snapshotTimestamp) {
+                        tryFetchSubject(paths, index + 1, subjectId, subjectCode, subjectName, yearLevel, fetchCount, 
+                                       teacherName, section, dayOfWeek, startTime, endTime, room, entries, totalEntries, processedCount, lock, snapshotTimestamp);
+                    } else {
+                        Log.d(TAG, "Skipping next subject path - snapshot changed (current: " + currentSnapshotTimestamp + ", this: " + snapshotTimestamp + ")");
+                    }
                 }
             }
 
             @Override
             public void onCancelled(@NonNull DatabaseError error) {
                 Log.e(TAG, "Error fetching subject from " + path + ": " + error.getMessage());
-                // Try next path
-                tryFetchSubject(paths, index + 1, subjectId, subjectCode, subjectName, yearLevel, fetchCount, 
-                               teacherName, section, dayOfWeek, startTime, endTime, room, entries, totalEntries, processedCount);
+                // Try next path (only if still current snapshot)
+                if (currentSnapshotTimestamp == snapshotTimestamp) {
+                    tryFetchSubject(paths, index + 1, subjectId, subjectCode, subjectName, yearLevel, fetchCount, 
+                                   teacherName, section, dayOfWeek, startTime, endTime, room, entries, totalEntries, processedCount, lock, snapshotTimestamp);
+                } else {
+                    Log.d(TAG, "Skipping next subject path on error - snapshot changed (current: " + currentSnapshotTimestamp + ", this: " + snapshotTimestamp + ")");
+                }
             }
         });
     }
@@ -605,13 +722,21 @@ public class TimetableActivity extends AppCompatActivity implements NavigationVi
     private void tryFetchTeacher(String[] paths, int index, String teacherId, String[] teacherName, int[] fetchCount,
                                 String[] subjectCode, String[] subjectName, String[] yearLevel, String section, 
                                 String dayOfWeek, String startTime, String endTime, String room, 
-                                List<TimetableEntry> entries, int totalEntries, int[] processedCount) {
+                                List<TimetableEntry> entries, int totalEntries, int[] processedCount, Object lock, long snapshotTimestamp) {
+        
         if (index >= paths.length) {
             Log.d(TAG, "Teacher not found in any path for teacherId: " + teacherId);
             fetchCount[0]++;
             if (fetchCount[0] == 2) {
-                processedCount[0]++;
-                checkIfComplete(entries, totalEntries, processedCount[0]);
+                synchronized (lock) {
+                    // Check if still current snapshot
+                    if (currentSnapshotTimestamp == snapshotTimestamp) {
+                        processedCount[0]++;
+                        checkIfComplete(entries, totalEntries, processedCount[0], snapshotTimestamp);
+                    } else {
+                        Log.d(TAG, "Ignoring stale teacher fetch completion (current: " + currentSnapshotTimestamp + ", this: " + snapshotTimestamp + ")");
+                    }
+                }
             }
             return;
         }
@@ -622,6 +747,12 @@ public class TimetableActivity extends AppCompatActivity implements NavigationVi
         teachersRef.addListenerForSingleValueEvent(new ValueEventListener() {
             @Override
             public void onDataChange(@NonNull DataSnapshot snapshot) {
+                // Check if this is still the current snapshot
+                if (currentSnapshotTimestamp != snapshotTimestamp) {
+                    Log.d(TAG, "Ignoring stale teacher fetch (current: " + currentSnapshotTimestamp + ", this: " + snapshotTimestamp + ")");
+                    return;
+                }
+                
                 boolean found = false;
                 for (DataSnapshot teacherSnapshot : snapshot.getChildren()) {
                     try {
@@ -642,22 +773,35 @@ public class TimetableActivity extends AppCompatActivity implements NavigationVi
                 if (found) {
                     fetchCount[0]++;
                     if (fetchCount[0] == 2) {
-                        createTimetableEntry(subjectCode[0], subjectName[0], teacherName[0], yearLevel[0],
-                                section, dayOfWeek, startTime, endTime, room, entries, totalEntries, processedCount);
+                        // Double-check snapshot is still current before creating entry
+                        if (currentSnapshotTimestamp == snapshotTimestamp) {
+                            createTimetableEntry(subjectCode[0], subjectName[0], teacherName[0], yearLevel[0],
+                                    section, dayOfWeek, startTime, endTime, room, entries, totalEntries, processedCount, lock, snapshotTimestamp);
+                        } else {
+                            Log.d(TAG, "Ignoring stale teacher fetch completion (current: " + currentSnapshotTimestamp + ", this: " + snapshotTimestamp + ")");
+                        }
                     }
                 } else {
-                    // Try next path
-                    tryFetchTeacher(paths, index + 1, teacherId, teacherName, fetchCount, subjectCode, subjectName, yearLevel, 
-                                   section, dayOfWeek, startTime, endTime, room, entries, totalEntries, processedCount);
+                    // Try next path (only if still current snapshot)
+                    if (currentSnapshotTimestamp == snapshotTimestamp) {
+                        tryFetchTeacher(paths, index + 1, teacherId, teacherName, fetchCount, subjectCode, subjectName, yearLevel, 
+                                       section, dayOfWeek, startTime, endTime, room, entries, totalEntries, processedCount, lock, snapshotTimestamp);
+                    } else {
+                        Log.d(TAG, "Skipping next teacher path - snapshot changed (current: " + currentSnapshotTimestamp + ", this: " + snapshotTimestamp + ")");
+                    }
                 }
             }
 
             @Override
             public void onCancelled(@NonNull DatabaseError error) {
                 Log.e(TAG, "Error fetching teacher from " + path + ": " + error.getMessage());
-                // Try next path
-                tryFetchTeacher(paths, index + 1, teacherId, teacherName, fetchCount, subjectCode, subjectName, yearLevel, 
-                               section, dayOfWeek, startTime, endTime, room, entries, totalEntries, processedCount);
+                // Try next path (only if still current snapshot)
+                if (currentSnapshotTimestamp == snapshotTimestamp) {
+                    tryFetchTeacher(paths, index + 1, teacherId, teacherName, fetchCount, subjectCode, subjectName, yearLevel, 
+                                   section, dayOfWeek, startTime, endTime, room, entries, totalEntries, processedCount, lock, snapshotTimestamp);
+                } else {
+                    Log.d(TAG, "Skipping next teacher path on error - snapshot changed (current: " + currentSnapshotTimestamp + ", this: " + snapshotTimestamp + ")");
+                }
             }
         });
     }
@@ -665,7 +809,7 @@ public class TimetableActivity extends AppCompatActivity implements NavigationVi
     private void createTimetableEntry(String subjectCode, String subjectName, String teacherName,
                                      String yearLevel, String section, String dayOfWeek, 
                                      String startTime, String endTime, String room,
-                                     List<TimetableEntry> entries, int totalEntries, int[] processedCount) {
+                                     List<TimetableEntry> entries, int totalEntries, int[] processedCount, Object lock, long snapshotTimestamp) {
         // Entry is already filtered by course_id, section, and year_level
         TimetableEntry entry = new TimetableEntry();
         entry.dayOfWeek = dayOfWeek;
@@ -676,30 +820,49 @@ public class TimetableActivity extends AppCompatActivity implements NavigationVi
         entry.subjectName = subjectName;
         entry.teacherName = teacherName;
 
-        entries.add(entry);
-        Log.d(TAG, "Added filtered entry: " + subjectCode + " on " + dayOfWeek + " at " + startTime + 
-              " (Year: " + yearLevel + ", Section: " + section + ")");
-
-        processedCount[0]++;
-        checkIfComplete(entries, totalEntries, processedCount[0]);
+        synchronized (lock) {
+            entries.add(entry);
+            Log.d(TAG, "✅ Added filtered entry: " + subjectCode + " on " + dayOfWeek + " at " + startTime + 
+                  " (Year: " + yearLevel + ", Section: " + section + ", snapshot: " + snapshotTimestamp + ")");
+            processedCount[0]++;
+            checkIfComplete(entries, totalEntries, processedCount[0], snapshotTimestamp);
+        }
     }
 
-    private void checkIfComplete(List<TimetableEntry> entries, int totalEntries, int processedCount) {
+    private void checkIfComplete(List<TimetableEntry> entries, int totalEntries, int processedCount, long snapshotTimestamp) {
+        Log.d(TAG, "checkIfComplete called - processedCount: " + processedCount + ", totalEntries: " + totalEntries + 
+              ", entries.size(): " + entries.size() + ", snapshot: " + snapshotTimestamp + ", current: " + currentSnapshotTimestamp);
+        
+        // Check if this is still the current snapshot (ignore if a new snapshot has arrived)
+        if (currentSnapshotTimestamp != snapshotTimestamp) {
+            Log.d(TAG, "⚠ Ignoring checkIfComplete - snapshot changed (current: " + currentSnapshotTimestamp + ", this: " + snapshotTimestamp + ")");
+            return;
+        }
+        
         if (processedCount >= totalEntries) {
             runOnUiThread(() -> {
+                // Double-check snapshot is still current before updating UI
+                if (currentSnapshotTimestamp != snapshotTimestamp) {
+                    Log.d(TAG, "⚠ Ignoring UI update - snapshot changed during UI thread execution");
+                    return;
+                }
+                
                 loadingProgress.setVisibility(View.GONE);
 
                 if (entries.isEmpty()) {
-                    Log.d(TAG, "No timetable entries found for student - Year: " + studentYearLevel + 
-                          ", Section: " + studentSection + ", Course: " + studentCourse);
+                    Log.w(TAG, "⚠ No timetable entries found after processing all " + totalEntries + " entries");
+                    Log.w(TAG, "Student filters - Year: " + studentYearLevel + ", Section: " + studentSection + ", Course: " + studentCourse + ", CourseID: " + studentCourseId);
                     showEmptyState();
                     return;
                 }
 
-                Log.d(TAG, "Building table with " + entries.size() + " filtered entries");
+                Log.d(TAG, "✅ Successfully processed " + entries.size() + " filtered entries out of " + totalEntries + " total entries (snapshot: " + snapshotTimestamp + ")");
                 buildTimetableTable(entries);
                 timetableCard.setVisibility(View.VISIBLE);
+                emptyStateText.setVisibility(View.GONE); // Hide empty state when entries are found
             });
+        } else {
+            Log.d(TAG, "⏳ Still processing... " + processedCount + "/" + totalEntries + " entries processed");
         }
     }
 
@@ -849,7 +1012,12 @@ public class TimetableActivity extends AppCompatActivity implements NavigationVi
             emptyCell.setLayoutParams(params);
             emptyRow.addView(emptyCell);
             timetableTable.addView(emptyRow);
+            
+            // Hide empty state text below (table already shows empty message)
+            emptyStateText.setVisibility(View.GONE);
         } else {
+            // Hide empty state text when entries are found
+            emptyStateText.setVisibility(View.GONE);
             // Sort by time - earliest first
             Log.d(TAG, "Before sorting - entry times:");
             for (TimetableEntry entry : todayEntries) {
@@ -1278,6 +1446,18 @@ public class TimetableActivity extends AppCompatActivity implements NavigationVi
                 showEmptyState();
             }
         });
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        // Remove Firebase listener to prevent memory leaks
+        if (timetableRef != null && timetableListener != null) {
+            Log.d(TAG, "Removing timetable listener in onDestroy");
+            timetableRef.removeEventListener(timetableListener);
+            timetableListener = null;
+            timetableRef = null;
+        }
     }
 
     // Inner class for timetable entry

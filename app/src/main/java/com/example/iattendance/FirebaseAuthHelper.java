@@ -152,6 +152,34 @@ public class FirebaseAuthHelper {
 
                                         if (isPasswordValid) {
                                             Log.d(TAG, "Found matching password in field: " + passwordField);
+                                            
+                                            // Check if account is soft deleted - check both data child and root level
+                                            Object isDeletedObj = dataSnapshot.child("is_deleted").getValue();
+                                            if (isDeletedObj == null) {
+                                                // Also check at root level of student record
+                                                isDeletedObj = studentSnapshot.child("is_deleted").getValue();
+                                            }
+                                            
+                                            boolean isDeleted = false;
+                                            if (isDeletedObj != null) {
+                                                Log.d(TAG, "is_deleted value found: " + isDeletedObj + " (type: " + isDeletedObj.getClass().getSimpleName() + ")");
+                                                if (isDeletedObj instanceof Boolean) {
+                                                    isDeleted = (Boolean) isDeletedObj;
+                                                } else if (isDeletedObj instanceof Number) {
+                                                    isDeleted = ((Number) isDeletedObj).intValue() == 1;
+                                                } else if (isDeletedObj instanceof String) {
+                                                    isDeleted = "1".equals(isDeletedObj) || "true".equalsIgnoreCase((String) isDeletedObj);
+                                                }
+                                                Log.d(TAG, "is_deleted parsed as: " + isDeleted);
+                                            } else {
+                                                Log.d(TAG, "is_deleted field not found - assuming account is active");
+                                            }
+                                            
+                                            if (isDeleted) {
+                                                Log.e(TAG, "STUDENT ACCOUNT IS DELETED - Login blocked");
+                                                callback.onError("This account has been deleted. Please contact the administrator to restore your account.");
+                                                return;
+                                            }
 
                                             String firstName = dataSnapshot.child("first_name").getValue(String.class);
                                             String lastName = dataSnapshot.child("last_name").getValue(String.class);
@@ -238,6 +266,34 @@ public class FirebaseAuthHelper {
 
                                         if (isPasswordValid) {
                                             Log.d(TAG, "Found matching teacher password in field: " + passwordField);
+                                            
+                                            // Check if account is soft deleted - check both data child and root level
+                                            Object isDeletedObj = dataSnapshot.child("is_deleted").getValue();
+                                            if (isDeletedObj == null) {
+                                                // Also check at root level of teacher record
+                                                isDeletedObj = teacherSnapshot.child("is_deleted").getValue();
+                                            }
+                                            
+                                            boolean isDeleted = false;
+                                            if (isDeletedObj != null) {
+                                                Log.d(TAG, "is_deleted value found: " + isDeletedObj + " (type: " + isDeletedObj.getClass().getSimpleName() + ")");
+                                                if (isDeletedObj instanceof Boolean) {
+                                                    isDeleted = (Boolean) isDeletedObj;
+                                                } else if (isDeletedObj instanceof Number) {
+                                                    isDeleted = ((Number) isDeletedObj).intValue() == 1;
+                                                } else if (isDeletedObj instanceof String) {
+                                                    isDeleted = "1".equals(isDeletedObj) || "true".equalsIgnoreCase((String) isDeletedObj);
+                                                }
+                                                Log.d(TAG, "is_deleted parsed as: " + isDeleted);
+                                            } else {
+                                                Log.d(TAG, "is_deleted field not found - assuming account is active");
+                                            }
+                                            
+                                            if (isDeleted) {
+                                                Log.e(TAG, "TEACHER ACCOUNT IS DELETED - Login blocked");
+                                                callback.onError("This account has been deleted. Please contact the administrator to restore your account.");
+                                                return;
+                                            }
 
                                             String firstName = dataSnapshot.child("first_name").getValue(String.class);
                                             String lastName = dataSnapshot.child("last_name").getValue(String.class);

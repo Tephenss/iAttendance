@@ -6,7 +6,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#fdf1e8"
-    tools:context=".TeacherTimetableActivity">
+    tools:context=".TeacherStudentsActivity">
 
     <!-- Main content -->
     <LinearLayout
@@ -84,7 +84,7 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="My Timetable"
+                android:text="My Students"
                 android:textColor="#2196F3"
                 android:textSize="28sp"
                 android:textStyle="bold"
@@ -93,50 +93,13 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="View your class schedule"
+                android:text="View and manage your students by class"
                 android:textColor="#757575"
                 android:textSize="14sp"
                 android:layout_marginTop="4dp" />
-
-            <!-- Current Day Indicator Card -->
-            <androidx.cardview.widget.CardView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
-                app:cardCornerRadius="20dp"
-                app:cardElevation="2dp"
-                app:cardBackgroundColor="#E3F2FD">
-
-                <LinearLayout
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="center_vertical"
-                    android:paddingStart="16dp"
-                    android:paddingEnd="16dp"
-                    android:paddingTop="10dp"
-                    android:paddingBottom="10dp">
-
-                    <ImageView
-                        android:layout_width="20dp"
-                        android:layout_height="20dp"
-                        android:src="@drawable/ic_schedule"
-                        android:tint="#2196F3"
-                        android:layout_marginEnd="8dp" />
-
-                    <TextView
-                        android:id="@+id/currentDayIndicator"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Monday"
-                        android:textColor="#2196F3"
-                        android:textSize="14sp"
-                        android:textStyle="bold" />
-                </LinearLayout>
-            </androidx.cardview.widget.CardView>
         </LinearLayout>
 
-        <!-- Timetable Content -->
+        <!-- Content -->
         <androidx.core.widget.NestedScrollView
             android:layout_width="match_parent"
             android:layout_height="match_parent"
@@ -149,25 +112,14 @@
                 android:orientation="vertical"
                 android:padding="20dp">
 
-                <!-- Loading indicator -->
-                <ProgressBar
-                    android:id="@+id/loadingProgress"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_gravity="center"
-                    android:layout_marginTop="40dp"
-                    android:layout_marginBottom="40dp"
-                    android:visibility="visible" />
-
-                <!-- Timetable Card -->
+                <!-- My Class Dropdown Card -->
                 <androidx.cardview.widget.CardView
-                    android:id="@+id/timetableCard"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
+                    android:layout_marginBottom="20dp"
                     app:cardCornerRadius="16dp"
                     app:cardElevation="4dp"
-                    app:cardBackgroundColor="#FFFFFF"
-                    android:visibility="gone">
+                    app:cardBackgroundColor="#FFFFFF">
 
                     <LinearLayout
                         android:layout_width="match_parent"
@@ -175,19 +127,18 @@
                         android:orientation="vertical"
                         android:padding="20dp">
 
-                        <!-- Section Header -->
                         <LinearLayout
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:orientation="horizontal"
                             android:gravity="center_vertical"
-                            android:layout_marginBottom="16dp">
+                            android:layout_marginBottom="12dp">
 
                             <TextView
                                 android:layout_width="0dp"
                                 android:layout_height="wrap_content"
                                 android:layout_weight="1"
-                                android:text="Schedule"
+                                android:text="Select Class"
                                 android:textColor="#212121"
                                 android:textSize="18sp"
                                 android:textStyle="bold" />
@@ -199,57 +150,93 @@
                                 android:tint="#2196F3" />
                         </LinearLayout>
 
-                        <HorizontalScrollView
+                        <Spinner
+                            android:id="@+id/classSpinner"
                             android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:scrollbars="horizontal"
-                            android:fadeScrollbars="false">
-
-                            <TableLayout
-                                android:id="@+id/timetableTable"
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:stretchColumns="*">
-                                <!-- Table will be populated dynamically -->
-                            </TableLayout>
-                        </HorizontalScrollView>
+                            android:layout_height="56dp"
+                            android:background="@drawable/spinner_background"
+                            android:spinnerMode="dropdown"
+                            android:paddingStart="16dp"
+                            android:paddingEnd="16dp"
+                            android:textSize="16sp"
+                            android:textColor="#212121"
+                            android:popupBackground="@drawable/spinner_dropdown_background"
+                            android:dropDownVerticalOffset="4dp" />
                     </LinearLayout>
                 </androidx.cardview.widget.CardView>
 
-                <!-- Empty state -->
+                <!-- Students List Section -->
                 <LinearLayout
-                    android:id="@+id/emptyStateText"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:gravity="center"
-                    android:padding="48dp"
-                    android:visibility="gone">
+                    android:orientation="vertical">
 
-                    <ImageView
-                        android:layout_width="80dp"
-                        android:layout_height="80dp"
-                        android:src="@drawable/ic_schedule"
-                        android:tint="#BDBDBD"
-                        android:layout_marginBottom="16dp" />
-
+                    <!-- Section Header -->
                     <TextView
-                        android:id="@+id/emptyStateTitle"
-                        android:layout_width="wrap_content"
+                        android:id="@+id/studentsSectionHeader"
+                        android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="No schedule available"
-                        android:textColor="#757575"
+                        android:text="Students List"
+                        android:textColor="#212121"
                         android:textSize="18sp"
                         android:textStyle="bold"
-                        android:layout_marginBottom="8dp" />
+                        android:layout_marginBottom="12dp"
+                        android:visibility="gone" />
 
-                    <TextView
+                    <!-- Loading indicator -->
+                    <ProgressBar
+                        android:id="@+id/loadingProgress"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Your timetable will appear here once classes are assigned"
-                        android:textColor="#9E9E9E"
-                        android:textSize="14sp"
-                        android:gravity="center" />
+                        android:layout_gravity="center"
+                        android:layout_marginTop="40dp"
+                        android:layout_marginBottom="40dp"
+                        android:visibility="visible" />
+
+                    <!-- Students List -->
+                    <androidx.recyclerview.widget.RecyclerView
+                        android:id="@+id/studentsRecyclerView"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:clipToPadding="false"
+                        android:paddingBottom="8dp"
+                        android:visibility="gone" />
+
+                    <!-- Empty state -->
+                    <LinearLayout
+                        android:id="@+id/emptyStateText"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:gravity="center"
+                        android:padding="48dp"
+                        android:visibility="gone">
+
+                        <ImageView
+                            android:layout_width="80dp"
+                            android:layout_height="80dp"
+                            android:src="@drawable/ic_people"
+                            android:tint="#BDBDBD"
+                            android:layout_marginBottom="16dp" />
+
+                        <TextView
+                            android:id="@+id/emptyStateTitle"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="No students found"
+                            android:textColor="#757575"
+                            android:textSize="18sp"
+                            android:textStyle="bold"
+                            android:layout_marginBottom="8dp" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Select a class to view enrolled students"
+                            android:textColor="#9E9E9E"
+                            android:textSize="14sp"
+                            android:gravity="center" />
+                    </LinearLayout>
                 </LinearLayout>
             </LinearLayout>
         </androidx.core.widget.NestedScrollView>
@@ -270,3 +257,4 @@
         app:itemIconTint="@color/nav_menu_item_text" />
 
 </androidx.drawerlayout.widget.DrawerLayout>
+

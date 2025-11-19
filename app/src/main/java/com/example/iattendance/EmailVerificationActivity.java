@@ -37,7 +37,7 @@ public class EmailVerificationActivity extends AppCompatActivity {
     private boolean isTimerRunning = false;
     private String currentVerificationCode; // Store code locally for faster verification
     private int cooldownSeconds = 0; // Resend cooldown timer
-    private boolean isInitialLoad = true; // Track if this is the first load
+    private static final long CODE_EXPIRATION_TIME = 30 * 60 * 1000; // 30 minutes in milliseconds
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -53,23 +53,156 @@ public class EmailVerificationActivity extends AppCompatActivity {
         // Initialize Firebase
         mDatabase = FirebaseDatabase.getInstance().getReference();
         
+        // Check if account is deleted before proceeding
+        checkAccountStatus();
+    }
+    
+    private void checkAccountStatus() {
+        android.util.Log.d("EmailVerification", "=== CHECKING ACCOUNT STATUS ===");
+        android.util.Log.d("EmailVerification", "User ID: " + userId);
+        android.util.Log.d("EmailVerification", "User Type: " + userType);
+        
+        // Determine the correct path based on user type
+        String userPath;
+        if ("student".equals(userType)) {
+            userPath = "attendance_system/students";
+        } else if ("teacher".equals(userType)) {
+            userPath = "attendance_system/teachers";
+        } else if ("admin".equals(userType)) {
+            userPath = "attendance_system/admins";
+        } else {
+            // Unknown user type, block access
+            android.util.Log.e("EmailVerification", "Invalid user type: " + userType);
+            showErrorAndReturn("Invalid user type");
+            return;
+        }
+        
+        android.util.Log.d("EmailVerification", "Searching in path: " + userPath);
+        
+        // Search for the user in Firebase
+        mDatabase.child(userPath).addListenerForSingleValueEvent(new ValueEventListener() {
+            @Override
+            public void onDataChange(com.google.firebase.database.DataSnapshot snapshot) {
+                android.util.Log.d("EmailVerification", "Data received: " + snapshot.getChildrenCount() + " records");
+                boolean accountFound = false;
+                boolean isDeleted = false;
+                
+                // Look through all records
+                for (com.google.firebase.database.DataSnapshot userSnapshot : snapshot.getChildren()) {
+                    android.util.Log.d("EmailVerification", "Checking record: " + userSnapshot.getKey());
+                    com.google.firebase.database.DataSnapshot dataSnapshot = userSnapshot.child("data");
+                    if (dataSnapshot.exists()) {
+                        android.util.Log.d("EmailVerification", "Found 'data' child in record");
+                        
+                        // Check if this is the correct user
+                        String[] idFields;
+                        if ("student".equals(userType)) {
+                            idFields = new String[]{"student_id", "id", "user_id", "username"};
+                        } else if ("teacher".equals(userType)) {
+                            idFields = new String[]{"teacher_id", "id", "user_id", "username"};
+                        } else {
+                            idFields = new String[]{"admin_id", "id", "user_id", "username"};
+                        }
+                        
+                        boolean isCorrectUser = false;
+                        
+                        for (String idField : idFields) {
+                            String foundId = dataSnapshot.child(idField).getValue(String.class);
+                            android.util.Log.d("EmailVerification", "Checking ID field '" + idField + "': " + foundId);
+                            if (foundId != null && foundId.equals(userId)) {
+                                android.util.Log.d("EmailVerification", "✓ Found matching ID: " + foundId);
+                                isCorrectUser = true;
+                                accountFound = true;
+                                break;
+                            }
+                        }
+                        
+                        if (isCorrectUser) {
+                            // Check if account is deleted - check both data child and root level
+                            Object isDeletedObj = dataSnapshot.child("is_deleted").getValue();
+                            android.util.Log.d("EmailVerification", "Checking is_deleted in data child: " + isDeletedObj);
+                            
+                            if (isDeletedObj == null) {
+                                // Also check at root level of user record
+                                isDeletedObj = userSnapshot.child("is_deleted").getValue();
+                                android.util.Log.d("EmailVerification", "Checking is_deleted in root: " + isDeletedObj);
+                            }
+                            
+                            if (isDeletedObj != null) {
+                                android.util.Log.d("EmailVerification", "is_deleted value found: " + isDeletedObj + " (type: " + isDeletedObj.getClass().getSimpleName() + ")");
+                                if (isDeletedObj instanceof Boolean) {
+                                    isDeleted = (Boolean) isDeletedObj;
+                                } else if (isDeletedObj instanceof Number) {
+                                    isDeleted = ((Number) isDeletedObj).intValue() == 1;
+                                } else if (isDeletedObj instanceof String) {
+                                    String deletedStr = ((String) isDeletedObj).trim();
+                                    isDeleted = "1".equals(deletedStr) || "true".equalsIgnoreCase(deletedStr);
+                                    // Also check if it's NOT "0" or "false" (defensive check)
+                                    if (!isDeleted && !"0".equals(deletedStr) && !"false".equalsIgnoreCase(deletedStr)) {
+                                        // If it's not a recognized value, treat as deleted for safety
+                                        android.util.Log.w("EmailVerification", "Unknown is_deleted value: " + deletedStr + " - treating as deleted for safety");
+                                        isDeleted = true;
+                                    }
+                                }
+                                android.util.Log.d("EmailVerification", "is_deleted parsed as: " + isDeleted);
+                            } else {
+                                android.util.Log.d("EmailVerification", "is_deleted field not found - assuming account is active");
+                            }
+                            break;
+                        }
+                    } else {
+                        android.util.Log.d("EmailVerification", "No 'data' child found in record");
+                    }
+                }
+                
+                android.util.Log.d("EmailVerification", "Account found: " + accountFound + ", Is deleted: " + isDeleted);
+                
+                if (!accountFound) {
+                    android.util.Log.e("EmailVerification", "Account not found in database");
+                    showErrorAndReturn("Account not found. Please contact support.");
+                } else if (isDeleted) {
+                    android.util.Log.e("EmailVerification", "✗ Account is deleted - BLOCKING ACCESS");
+                    showErrorAndReturn("This account has been deleted. Please contact the administrator to restore your account.");
+                } else {
+                    // Account is valid, proceed with initialization
+                    android.util.Log.d("EmailVerification", "✓ Account status verified - proceeding");
+                    initializeActivity();
+                }
+            }
+            
+            @Override
+            public void onCancelled(DatabaseError error) {
+                android.util.Log.e("EmailVerification", "Error checking account status: " + error.getMessage());
+                showErrorAndReturn("Error verifying account. Please try again.");
+            }
+        });
+    }
+    
+    private void showErrorAndReturn(String message) {
+        runOnUiThread(() -> {
+            Toast.makeText(this, message, Toast.LENGTH_LONG).show();
+            
+            // Clear session
+            SessionManager sessionManager = new SessionManager(this);
+            sessionManager.logout();
+            
+            // Return to login
+            Intent intent = new Intent(this, MainActivity.class);
+            intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+            startActivity(intent);
+            finish();
+        });
+    }
+    
+    private void initializeActivity() {
         // Initialize views
         initViews();
         
         // Set up click listeners
         setupClickListeners();
         
-        // Start countdown timer
-        startCountdownTimer();
-        
-        // Start initial cooldown timer (60 seconds - matching website)
-        startCooldownTimer();
-        
-        // Generate and send verification code only on initial load
-        if (isInitialLoad) {
-            generateAndSendVerificationCode();
-            isInitialLoad = false;
-        }
+        // Check if there's an existing valid verification code first
+        checkExistingVerificationCode();
     }
     
     private void initViews() {
@@ -267,6 +400,90 @@ public class EmailVerificationActivity extends AppCompatActivity {
         }).start();
     }
     
+    private void checkExistingVerificationCode() {
+        android.util.Log.d("EmailVerification", "Checking for existing verification code");
+        
+        // Check if there's an existing code in Firebase
+        mDatabase.child("verification_codes").child(userId).addListenerForSingleValueEvent(new ValueEventListener() {
+            @Override
+            public void onDataChange(DataSnapshot snapshot) {
+                if (snapshot.exists()) {
+                    // Check if it's a simple string (old format) or a map (new format with timestamp)
+                    Object codeData = snapshot.getValue();
+                    
+                    String existingCode = null;
+                    Long timestamp = null;
+                    
+                    if (codeData instanceof String) {
+                        // Old format: just the code
+                        existingCode = (String) codeData;
+                        android.util.Log.d("EmailVerification", "Found old format code: " + existingCode);
+                        // No timestamp, assume expired and generate new
+                        generateAndSendVerificationCode();
+                        return;
+                    } else if (codeData instanceof java.util.Map) {
+                        // New format: map with code and timestamp
+                        @SuppressWarnings("unchecked")
+                        java.util.Map<String, Object> codeMap = (java.util.Map<String, Object>) codeData;
+                        existingCode = (String) codeMap.get("code");
+                        Object timestampObj = codeMap.get("timestamp");
+                        if (timestampObj instanceof Long) {
+                            timestamp = (Long) timestampObj;
+                        } else if (timestampObj instanceof Integer) {
+                            timestamp = ((Integer) timestampObj).longValue();
+                        }
+                    }
+                    
+                    if (existingCode != null && timestamp != null) {
+                        // Check if code is still valid (not expired)
+                        long currentTime = System.currentTimeMillis();
+                        long elapsedTime = currentTime - timestamp;
+                        
+                        android.util.Log.d("EmailVerification", "Existing code found. Elapsed time: " + (elapsedTime / 1000) + " seconds");
+                        
+                        if (elapsedTime < CODE_EXPIRATION_TIME) {
+                            // Code is still valid, reuse it
+                            android.util.Log.d("EmailVerification", "Reusing existing valid code");
+                            currentVerificationCode = existingCode;
+                            
+                            // Calculate remaining time
+                            long remainingTime = CODE_EXPIRATION_TIME - elapsedTime;
+                            countdownSeconds = (int) (remainingTime / 1000);
+                            
+                            // Start countdown timer with remaining time
+                            startCountdownTimer();
+                            
+                            // Start cooldown timer (60 seconds - matching website)
+                            startCooldownTimer();
+                            
+                            // Don't send email again, just show message
+                            Toast.makeText(EmailVerificationActivity.this, 
+                                "Using existing verification code. Check your email.", 
+                                Toast.LENGTH_LONG).show();
+                            return;
+                        } else {
+                            // Code expired, generate new one
+                            android.util.Log.d("EmailVerification", "Existing code expired, generating new code");
+                        }
+                    } else {
+                        // Invalid format, generate new code
+                        android.util.Log.d("EmailVerification", "Invalid code format, generating new code");
+                    }
+                }
+                
+                // No existing code or expired, generate new one
+                generateAndSendVerificationCode();
+            }
+            
+            @Override
+            public void onCancelled(DatabaseError error) {
+                android.util.Log.e("EmailVerification", "Error checking existing code: " + error.getMessage());
+                // On error, generate new code
+                generateAndSendVerificationCode();
+            }
+        });
+    }
+    
     private void generateAndSendVerificationCode() {
         android.util.Log.d("EmailVerification", "Generating and sending verification code");
         
@@ -276,8 +493,20 @@ public class EmailVerificationActivity extends AppCompatActivity {
         // Store code locally for faster verification
         currentVerificationCode = verificationCode;
         
-        // Store verification code in Firebase (async, don't wait)
-        mDatabase.child("verification_codes").child(userId).setValue(verificationCode);
+        // Store verification code with timestamp in Firebase
+        long timestamp = System.currentTimeMillis();
+        java.util.Map<String, Object> codeData = new java.util.HashMap<>();
+        codeData.put("code", verificationCode);
+        codeData.put("timestamp", timestamp);
+        
+        mDatabase.child("verification_codes").child(userId).setValue(codeData);
+        
+        // Reset countdown timer to 30 minutes
+        countdownSeconds = 1800;
+        startCountdownTimer();
+        
+        // Start initial cooldown timer (60 seconds - matching website)
+        startCooldownTimer();
         
         // Send verification code via email
         sendVerificationEmail(verificationCode);
@@ -365,6 +594,10 @@ public class EmailVerificationActivity extends AppCompatActivity {
             
             Toast.makeText(this, "Email verified successfully!", Toast.LENGTH_SHORT).show();
             
+            // Mark user as verified in session
+            SessionManager sessionManager = new SessionManager(this);
+            sessionManager.setVerified(true);
+            
             // Clear verification code (async, don't wait)
             mDatabase.child("verification_codes").child(userId).removeValue();
             currentVerificationCode = null;
@@ -389,7 +622,22 @@ public class EmailVerificationActivity extends AppCompatActivity {
             public void onDataChange(DataSnapshot snapshot) {
                 android.util.Log.d("EmailVerification", "Firebase data received");
                 
-                String storedCode = snapshot.getValue(String.class);
+                String storedCode = null;
+                
+                if (snapshot.exists()) {
+                    Object codeData = snapshot.getValue();
+                    
+                    if (codeData instanceof String) {
+                        // Old format: just the code
+                        storedCode = (String) codeData;
+                    } else if (codeData instanceof java.util.Map) {
+                        // New format: map with code and timestamp
+                        @SuppressWarnings("unchecked")
+                        java.util.Map<String, Object> codeMap = (java.util.Map<String, Object>) codeData;
+                        storedCode = (String) codeMap.get("code");
+                    }
+                }
+                
                 android.util.Log.d("EmailVerification", "Stored code: " + storedCode);
                 
                 if (storedCode != null && storedCode.equals(enteredCode)) {
@@ -400,6 +648,10 @@ public class EmailVerificationActivity extends AppCompatActivity {
                     showSuccessAnimation();
                     
                     Toast.makeText(EmailVerificationActivity.this, "Email verified successfully!", Toast.LENGTH_SHORT).show();
+                    
+                    // Mark user as verified in session
+                    SessionManager sessionManager = new SessionManager(EmailVerificationActivity.this);
+                    sessionManager.setVerified(true);
                     
                     // Clear verification code (async, don't wait)
                     mDatabase.child("verification_codes").child(userId).removeValue();
@@ -456,22 +708,12 @@ public class EmailVerificationActivity extends AppCompatActivity {
         currentVerificationCode = null; // Clear local cache
         mDatabase.child("verification_codes").child(userId).removeValue(); // Remove from Firebase
         
-        // Reset timer
-        countdownSeconds = 1800; // Reset to 30 minutes (matching website)
-        android.util.Log.d("EmailVerification", "Timer reset to 30 minutes");
-        
-        // Generate and send new verification code
+        // Generate and send new verification code (this will reset timer to 30 minutes and start timers)
         android.util.Log.d("EmailVerification", "Generating NEW verification code for resend");
         generateAndSendVerificationCode();
         
         // Show feedback
         Toast.makeText(this, "Resending verification code...", Toast.LENGTH_SHORT).show();
-        
-        // Start countdown timer
-        startCountdownTimer();
-        
-        // Start cooldown timer (60 seconds - matching website)
-        startCooldownTimer();
         
         android.util.Log.d("EmailVerification", "=== RESEND PROCESS COMPLETED ===");
     }
@@ -610,5 +852,21 @@ public class EmailVerificationActivity extends AppCompatActivity {
         super.onDestroy();
         isTimerRunning = false;
         android.util.Log.d("EmailVerification", "Activity destroyed");
+    }
+    
+    @Override
+    public void onBackPressed() {
+        // When back button is pressed, clear session and go back to login
+        android.util.Log.d("EmailVerification", "Back button pressed - clearing session and returning to login");
+        
+        // Clear the login session
+        SessionManager sessionManager = new SessionManager(this);
+        sessionManager.logout();
+        
+        // Navigate back to login
+        Intent intent = new Intent(this, MainActivity.class);
+        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+        startActivity(intent);
+        finish();
     }
 }

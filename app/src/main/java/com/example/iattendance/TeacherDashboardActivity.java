@@ -23,10 +23,21 @@ public class TeacherDashboardActivity extends AppCompatActivity implements Navig
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_teacher_dashboard);
-
+        
         // Initialize session manager
         sessionManager = new SessionManager(this);
+        
+        // Check if user is logged in and verified
+        if (!sessionManager.isLoggedIn() || !sessionManager.isVerified()) {
+            // User not logged in or not verified, redirect to login
+            Intent intent = new Intent(this, MainActivity.class);
+            intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+            startActivity(intent);
+            finish();
+            return;
+        }
+        
+        setContentView(R.layout.activity_teacher_dashboard);
 
         // Setup drawer
         drawerLayout = findViewById(R.id.drawer_layout);
@@ -95,13 +106,22 @@ public class TeacherDashboardActivity extends AppCompatActivity implements Navig
             drawerLayout.closeDrawer(GravityCompat.START);
             return true;
         } else if (id == R.id.nav_timetable) {
+            // Navigate to Teacher Timetable
             Intent intent = new Intent(this, TeacherTimetableActivity.class);
             intent.putExtra("userId", getIntent().getStringExtra("userId"));
             intent.putExtra("userType", getIntent().getStringExtra("userType"));
             intent.putExtra("fullName", getIntent().getStringExtra("fullName"));
             intent.putExtra("email", getIntent().getStringExtra("email"));
             startActivity(intent);
-            drawerLayout.closeDrawer(GravityCompat.START);
+            return true;
+        } else if (id == R.id.nav_students) {
+            // Navigate to My Students
+            Intent intent = new Intent(this, TeacherStudentsActivity.class);
+            intent.putExtra("userId", getIntent().getStringExtra("userId"));
+            intent.putExtra("userType", getIntent().getStringExtra("userType"));
+            intent.putExtra("fullName", getIntent().getStringExtra("fullName"));
+            intent.putExtra("email", getIntent().getStringExtra("email"));
+            startActivity(intent);
             return true;
         }
 
@@ -143,7 +163,6 @@ public class TeacherDashboardActivity extends AppCompatActivity implements Navig
         popupMenu.show();
     }
 
-
     private void performLogout() {
         sessionManager.logout();
         Intent intent = new Intent(this, MainActivity.class);
@@ -152,8 +171,3 @@ public class TeacherDashboardActivity extends AppCompatActivity implements Navig
         finish();
     }
 }
-
-
-
-
-

@@ -48,11 +48,26 @@ public class MainActivity extends AppCompatActivity {
         EdgeToEdge.enable(this);
         setContentView(R.layout.activity_main);
 
-        // Check if user is already logged in
+        // Check if user is already logged in AND verified
         SessionManager sessionManager = new SessionManager(this);
-        if (sessionManager.isLoggedIn()) {
-            // User is logged in, navigate to appropriate dashboard
+        if (sessionManager.isLoggedIn() && sessionManager.isVerified()) {
+            // User is logged in and verified, navigate to appropriate dashboard
             navigateToDashboard(sessionManager);
+            return;
+        } else if (sessionManager.isLoggedIn() && !sessionManager.isVerified()) {
+            // User is logged in but not verified, redirect to verification
+            String userId = sessionManager.getUserId();
+            String userType = sessionManager.getUserType();
+            String fullName = sessionManager.getFullName();
+            String email = sessionManager.getEmail();
+            
+            Intent intent = new Intent(this, EmailVerificationActivity.class);
+            intent.putExtra("userId", userId);
+            intent.putExtra("userType", userType);
+            intent.putExtra("fullName", fullName);
+            intent.putExtra("email", email);
+            startActivity(intent);
+            finish();
             return;
         }
 

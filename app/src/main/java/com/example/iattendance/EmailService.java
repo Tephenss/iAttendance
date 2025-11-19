@@ -144,7 +144,7 @@ public class EmailService {
                 "</div>" +
                 "<div class='divider'></div>" +
                 "<div class='timer-warning'>" +
-                "<strong>⏰ Time Sensitive:</strong> This verification code will expire in <strong>30 minutes</strong> for security reasons." +
+                "<strong>⏰ Time Sensitive:</strong> This verification code will expire in <strong>5 minutes</strong> for security reasons." +
                 "</div>" +
                 "<div class='security-notice'>" +
                 "<strong>🔒 Security Notice:</strong><br>" +

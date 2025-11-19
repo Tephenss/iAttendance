@@ -23,10 +23,21 @@ public class StudentDashboardActivity extends AppCompatActivity implements Navig
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_student_dashboard);
-
+        
         // Initialize session manager
         sessionManager = new SessionManager(this);
+        
+        // Check if user is logged in and verified
+        if (!sessionManager.isLoggedIn() || !sessionManager.isVerified()) {
+            // User not logged in or not verified, redirect to login
+            Intent intent = new Intent(this, MainActivity.class);
+            intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+            startActivity(intent);
+            finish();
+            return;
+        }
+        
+        setContentView(R.layout.activity_student_dashboard);
 
         // Setup drawer
         drawerLayout = findViewById(R.id.drawer_layout);

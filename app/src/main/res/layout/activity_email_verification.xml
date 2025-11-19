@@ -289,7 +289,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="The code will expire in 30 minutes"
+                        android:text="The code will expire in 5 minutes"
                         android:textSize="10sp"
                         android:textColor="#6c757d"
                         android:layout_marginTop="12dp"

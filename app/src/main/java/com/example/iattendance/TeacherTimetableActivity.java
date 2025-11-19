@@ -46,7 +46,7 @@ public class TeacherTimetableActivity extends AppCompatActivity implements Navig
     private SessionManager sessionManager;
     private TableLayout timetableTable;
     private ProgressBar loadingProgress;
-    private TextView emptyStateText;
+    private View emptyStateText;
     private CardView timetableCard;
     private TextView currentDayIndicator;
 
@@ -91,6 +91,21 @@ public class TeacherTimetableActivity extends AppCompatActivity implements Navig
 
         navigationView.setNavigationItemSelectedListener(this);
         navigationView.setCheckedItem(R.id.nav_timetable);
+        
+        // Handle navigation from other activities
+        if (getIntent().hasExtra("navTo")) {
+            String navTo = getIntent().getStringExtra("navTo");
+            if ("students".equals(navTo)) {
+                Intent intent = new Intent(this, TeacherStudentsActivity.class);
+                intent.putExtra("userId", getIntent().getStringExtra("userId"));
+                intent.putExtra("userType", getIntent().getStringExtra("userType"));
+                intent.putExtra("fullName", getIntent().getStringExtra("fullName"));
+                intent.putExtra("email", getIntent().getStringExtra("email"));
+                startActivity(intent);
+                finish();
+                return;
+            }
+        }
 
         // Get user data
         teacherId = getIntent().getStringExtra("userId");
@@ -124,6 +139,9 @@ public class TeacherTimetableActivity extends AppCompatActivity implements Navig
     private void fetchTeacherTimetable(String userId) {
         loadingProgress.setVisibility(View.VISIBLE);
         timetableCard.setVisibility(View.GONE);
+        if (emptyStateText != null) {
+            emptyStateText.setVisibility(View.GONE);
+        }
 
         Log.d(TAG, "Fetching teacher timetable for teacherId: " + userId);
 
@@ -233,7 +251,8 @@ public class TeacherTimetableActivity extends AppCompatActivity implements Navig
                 // Use stored classIds or the provided ones
                 List<String> currentClassIds = teacherClassIds != null ? teacherClassIds : classIds;
                 
-                List<TimetableEntry> entries = new ArrayList<>();
+                // Clear existing entries list for fresh fetch
+                final List<TimetableEntry> entries = new ArrayList<>();
                 int totalEntries = (int) snapshot.getChildrenCount();
                 final int[] processedCount = {0};
                 
@@ -245,12 +264,37 @@ public class TeacherTimetableActivity extends AppCompatActivity implements Navig
                     return;
                 }
 
+                // Count entries that belong to teacher first
+                int teacherEntriesCount = 0;
+                for (DataSnapshot entrySnapshot : snapshot.getChildren()) {
+                    try {
+                        DataSnapshot dataSnapshot = entrySnapshot.child("data");
+                        if (!dataSnapshot.exists()) continue;
+                        
+                        String classId = dataSnapshot.child("class_id").getValue(String.class);
+                        if (classId != null && currentClassIds.contains(classId)) {
+                            teacherEntriesCount++;
+                        }
+                    } catch (Exception e) {
+                        // Skip invalid entries
+                    }
+                }
+
+                if (teacherEntriesCount == 0) {
+                    runOnUiThread(() -> {
+                        loadingProgress.setVisibility(View.GONE);
+                        showEmptyState();
+                    });
+                    return;
+                }
+
+                // Now process entries
                 for (DataSnapshot entrySnapshot : snapshot.getChildren()) {
                     try {
                         DataSnapshot dataSnapshot = entrySnapshot.child("data");
                         if (!dataSnapshot.exists()) {
                             processedCount[0]++;
-                            checkIfComplete(entries, totalEntries, processedCount[0]);
+                            checkIfComplete(entries, teacherEntriesCount, processedCount[0]);
                             continue;
                         }
 
@@ -265,16 +309,14 @@ public class TeacherTimetableActivity extends AppCompatActivity implements Navig
                         // Only process entries for teacher's classes
                         if (classId != null && currentClassIds.contains(classId)) {
                             Log.d(TAG, "✓ Processing timetable entry for classId: " + classId);
-                            fetchTeacherClassDetails(classId, dayOfWeek, startTime, endTime, room, entries, totalEntries, processedCount);
+                            fetchTeacherClassDetails(classId, dayOfWeek, startTime, endTime, room, entries, teacherEntriesCount, processedCount);
                         } else {
+                            // Skip entries not for this teacher - don't count them
                             Log.d(TAG, "✗ Skipping timetable entry - classId: " + classId + " not in teacher's classes");
-                            processedCount[0]++;
-                            checkIfComplete(entries, totalEntries, processedCount[0]);
                         }
                     } catch (Exception e) {
                         Log.e(TAG, "Error parsing timetable entry: " + e.getMessage());
-                        processedCount[0]++;
-                        checkIfComplete(entries, totalEntries, processedCount[0]);
+                        // Only count if it was supposed to be processed
                     }
                 }
             }
@@ -462,6 +504,10 @@ public class TeacherTimetableActivity extends AppCompatActivity implements Navig
     }
 
     private void buildTimetableTable(List<TimetableEntry> entries) {
+        if (timetableTable == null) {
+            Log.e(TAG, "timetableTable is null!");
+            return;
+        }
         timetableTable.removeAllViews();
         
         // Get current day
@@ -496,7 +542,7 @@ public class TeacherTimetableActivity extends AppCompatActivity implements Navig
         
         // Create header
         TableRow headerRow = new TableRow(this);
-        headerRow.setBackgroundColor(Color.parseColor("#f8f9fa"));
+        headerRow.setBackgroundColor(Color.TRANSPARENT);
         
         TextView timeHeader = createHeaderCell("TIME");
         timeHeader.setMinWidth(dpToPx(150));
@@ -514,15 +560,23 @@ public class TeacherTimetableActivity extends AppCompatActivity implements Navig
         sectionHeader.setMinWidth(dpToPx(100));
         headerRow.addView(sectionHeader);
         
+        TextView roomHeader = createHeaderCell("ROOM");
+        roomHeader.setMinWidth(dpToPx(100));
+        headerRow.addView(roomHeader);
+        
         timetableTable.addView(headerRow);
         
         // Add entries
         for (TimetableEntry entry : todayEntries) {
             TableRow row = new TableRow(this);
+            row.setBackgroundColor(Color.TRANSPARENT);
+            row.setGravity(Gravity.CENTER_VERTICAL);
             
-            // Time column
-            String timeDisplay = formatTime(entry.startTime) + "-" + formatTime(entry.endTime);
-            TextView timeCell = createCell(timeDisplay);
+            // Time column - format: "10:00 AM-\n12:00 PM" (start time stays whole, line break after dash)
+            String startTimeFormatted = formatTime(entry.startTime);
+            String endTimeFormatted = formatTime(entry.endTime);
+            String timeDisplay = startTimeFormatted + "-\n" + endTimeFormatted;
+            TextView timeCell = createTimeCell(timeDisplay);
             timeCell.setMinWidth(dpToPx(150));
             row.addView(timeCell);
             
@@ -549,6 +603,11 @@ public class TeacherTimetableActivity extends AppCompatActivity implements Navig
             sectionCell.setMinWidth(dpToPx(100));
             row.addView(sectionCell);
             
+            // Room column
+            TextView roomCell = createCell(entry.room != null ? entry.room : "");
+            roomCell.setMinWidth(dpToPx(100));
+            row.addView(roomCell);
+            
             timetableTable.addView(row);
         }
     }
@@ -556,26 +615,87 @@ public class TeacherTimetableActivity extends AppCompatActivity implements Navig
     private TextView createHeaderCell(String text) {
         TextView tv = new TextView(this);
         tv.setText(text);
-        tv.setTextColor(Color.parseColor("#333333"));
-        tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        tv.setTextColor(Color.parseColor("#2196F3"));
+        tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
         tv.setTypeface(null, Typeface.BOLD);
         tv.setGravity(Gravity.CENTER);
-        tv.setPadding(dpToPx(12), dpToPx(12), dpToPx(12), dpToPx(12));
-        tv.setBackgroundColor(Color.parseColor("#f8f9fa"));
+        tv.setPadding(dpToPx(16), dpToPx(14), dpToPx(16), dpToPx(14));
+        tv.setBackgroundColor(Color.parseColor("#E3F2FD"));
+        tv.setLetterSpacing(0.05f);
+        
+        // Add rounded corners effect with drawable
+        android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
+        bg.setColor(Color.parseColor("#E3F2FD"));
+        bg.setCornerRadius(dpToPx(8));
+        tv.setBackground(bg);
+        
+        TableRow.LayoutParams params = new TableRow.LayoutParams();
+        params.setMargins(dpToPx(2), dpToPx(2), dpToPx(2), dpToPx(2));
+        tv.setLayoutParams(params);
+        
         return tv;
     }
 
     private TextView createCell(String text) {
         TextView tv = new TextView(this);
         tv.setText(text != null ? text : "");
-        tv.setTextColor(Color.parseColor("#333333"));
-        tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
-        tv.setGravity(Gravity.CENTER);
-        tv.setPadding(dpToPx(12), dpToPx(12), dpToPx(12), dpToPx(12));
-        tv.setBackgroundColor(Color.WHITE);
+        tv.setTextColor(Color.parseColor("#212121"));
+        tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        tv.setGravity(Gravity.CENTER_VERTICAL | Gravity.CENTER_HORIZONTAL);
+        tv.setPadding(dpToPx(16), dpToPx(14), dpToPx(16), dpToPx(14));
+        tv.setSingleLine(false);
+        tv.setMaxLines(3);
+        tv.setEllipsize(null);
+        tv.setMinHeight(dpToPx(60));
         
-        TableRow.LayoutParams params = new TableRow.LayoutParams();
-        params.setMargins(dpToPx(1), dpToPx(1), dpToPx(1), dpToPx(1));
+        // Modern cell background with rounded corners
+        android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
+        bg.setColor(Color.WHITE);
+        bg.setCornerRadius(dpToPx(8));
+        bg.setStroke(dpToPx(1), Color.parseColor("#E0E0E0"));
+        tv.setBackground(bg);
+        
+        // Use consistent layout params for proper alignment
+        TableRow.LayoutParams params = new TableRow.LayoutParams(
+            TableRow.LayoutParams.WRAP_CONTENT,
+            TableRow.LayoutParams.WRAP_CONTENT
+        );
+        params.gravity = Gravity.CENTER_VERTICAL | Gravity.CENTER_HORIZONTAL;
+        params.setMargins(dpToPx(2), dpToPx(2), dpToPx(2), dpToPx(2));
+        tv.setLayoutParams(params);
+        
+        return tv;
+    }
+
+    private TextView createTimeCell(String text) {
+        TextView tv = new TextView(this);
+        tv.setText(text != null ? text : "");
+        tv.setTextColor(Color.parseColor("#2196F3"));
+        tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        tv.setTypeface(null, Typeface.BOLD);
+        tv.setGravity(Gravity.CENTER_VERTICAL | Gravity.CENTER_HORIZONTAL);
+        // Use same padding as regular cells for alignment
+        tv.setPadding(dpToPx(16), dpToPx(14), dpToPx(16), dpToPx(14));
+        tv.setSingleLine(false);
+        tv.setMaxLines(3);
+        tv.setEllipsize(null);
+        // Use same minHeight as regular cells for alignment
+        tv.setMinHeight(dpToPx(60));
+        
+        // Modern time cell background with blue accent
+        android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
+        bg.setColor(Color.parseColor("#F5F9FF"));
+        bg.setCornerRadius(dpToPx(8));
+        bg.setStroke(dpToPx(1), Color.parseColor("#BBDEFB"));
+        tv.setBackground(bg);
+        
+        // Use same layout params as regular cells for proper alignment
+        TableRow.LayoutParams params = new TableRow.LayoutParams(
+            TableRow.LayoutParams.WRAP_CONTENT,
+            TableRow.LayoutParams.WRAP_CONTENT
+        );
+        params.gravity = Gravity.CENTER_VERTICAL | Gravity.CENTER_HORIZONTAL;
+        params.setMargins(dpToPx(2), dpToPx(2), dpToPx(2), dpToPx(2));
         tv.setLayoutParams(params);
         
         return tv;
@@ -674,6 +794,16 @@ public class TeacherTimetableActivity extends AppCompatActivity implements Navig
         } else if (id == R.id.nav_timetable) {
             drawerLayout.closeDrawer(GravityCompat.START);
             return true;
+        } else if (id == R.id.nav_students) {
+            Intent intent = new Intent(this, TeacherStudentsActivity.class);
+            intent.putExtra("userId", teacherId);
+            intent.putExtra("userType", getIntent().getStringExtra("userType"));
+            intent.putExtra("fullName", getIntent().getStringExtra("fullName"));
+            intent.putExtra("email", getIntent().getStringExtra("email"));
+            startActivity(intent);
+            finish();
+            drawerLayout.closeDrawer(GravityCompat.START);
+            return true;
         }
 
         return false;
@@ -726,6 +856,18 @@ public class TeacherTimetableActivity extends AppCompatActivity implements Navig
         intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
         startActivity(intent);
         finish();
+    }
+
+    private void showEmptyState() {
+        if (loadingProgress != null) {
+            loadingProgress.setVisibility(View.GONE);
+        }
+        if (timetableCard != null) {
+            timetableCard.setVisibility(View.GONE);
+        }
+        if (emptyStateText != null) {
+            emptyStateText.setVisibility(View.VISIBLE);
+        }
     }
 
     // Inner class for timetable entry

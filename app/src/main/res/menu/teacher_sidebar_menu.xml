@@ -9,8 +9,13 @@
         
         <item
             android:id="@+id/nav_timetable"
-            android:icon="@drawable/ic_dashboard"
+            android:icon="@drawable/ic_schedule"
             android:title="Timetable" />
+        
+        <item
+            android:id="@+id/nav_students"
+            android:icon="@drawable/ic_people"
+            android:title="My Students" />
     </group>
 
 </menu>
