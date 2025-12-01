@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- 
+        IMPORTANT: For production, use HTTPS (recommended for Play Store).
+        This config allows cleartext HTTP for local IP addresses (for testing).
+        For production, remove the domain-config and use HTTPS only.
+    -->
+    
+    <!-- Allow cleartext HTTP for local network IPs (for development/testing) -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">192.168.1.100</domain>
+        <domain includeSubdomains="true">10.0.2.2</domain>
+        <domain includeSubdomains="true">localhost</domain>
+        <domain includeSubdomains="true">127.0.0.1</domain>
+    </domain-config>
+    
+    <!-- Default: Block cleartext HTTP for all other domains (secure for production) -->
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="user" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>
+

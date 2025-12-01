@@ -46,7 +46,7 @@ public class TimetableActivity extends AppCompatActivity implements NavigationVi
     private SessionManager sessionManager;
     private TableLayout timetableTable;
     private ProgressBar loadingProgress;
-    private TextView emptyStateText;
+    private View emptyStateText;
     private CardView timetableCard;
     private TextView currentDayIndicator;
 
@@ -971,28 +971,50 @@ public class TimetableActivity extends AppCompatActivity implements NavigationVi
         
         Log.d(TAG, "Total entries for today: " + todayEntries.size());
         
+        // Define column widths
+        int timeWidth = dpToPx(150);
+        int subjectWidth = dpToPx(150);
+        int teacherWidth = dpToPx(120);
+        int roomWidth = dpToPx(100);
+        
+        // Disable column stretching/shrinking
+        timetableTable.setStretchAllColumns(false);
+        timetableTable.setShrinkAllColumns(false);
+        for (int i = 0; i < 4; i++) {
+            timetableTable.setColumnStretchable(i, false);
+            timetableTable.setColumnShrinkable(i, false);
+        }
+        
         // Create header
         TableRow headerRow = new TableRow(this);
-        headerRow.setBackgroundColor(Color.parseColor("#f8f9fa"));
+        headerRow.setBackgroundColor(Color.TRANSPARENT);
         
         TextView timeHeader = createHeaderCell("TIME");
-        timeHeader.setMinWidth(dpToPx(120));
-        timeHeader.setMaxWidth(dpToPx(120));
+        TableRow.LayoutParams timeHeaderParams = new TableRow.LayoutParams(timeWidth, TableRow.LayoutParams.WRAP_CONTENT);
+        timeHeaderParams.setMargins(dpToPx(2), dpToPx(2), dpToPx(2), dpToPx(2));
+        timeHeaderParams.weight = 0;
+        timeHeader.setLayoutParams(timeHeaderParams);
         headerRow.addView(timeHeader);
         
         TextView subjectHeader = createHeaderCell("SUBJECT");
-        subjectHeader.setMinWidth(dpToPx(150));
-        subjectHeader.setMaxWidth(dpToPx(150));
+        TableRow.LayoutParams subjectHeaderParams = new TableRow.LayoutParams(subjectWidth, TableRow.LayoutParams.WRAP_CONTENT);
+        subjectHeaderParams.setMargins(dpToPx(2), dpToPx(2), dpToPx(2), dpToPx(2));
+        subjectHeaderParams.weight = 0;
+        subjectHeader.setLayoutParams(subjectHeaderParams);
         headerRow.addView(subjectHeader);
         
         TextView teacherHeader = createHeaderCell("TEACHER");
-        teacherHeader.setMinWidth(dpToPx(120));
-        teacherHeader.setMaxWidth(dpToPx(120));
+        TableRow.LayoutParams teacherHeaderParams = new TableRow.LayoutParams(teacherWidth, TableRow.LayoutParams.WRAP_CONTENT);
+        teacherHeaderParams.setMargins(dpToPx(2), dpToPx(2), dpToPx(2), dpToPx(2));
+        teacherHeaderParams.weight = 0;
+        teacherHeader.setLayoutParams(teacherHeaderParams);
         headerRow.addView(teacherHeader);
         
         TextView roomHeader = createHeaderCell("ROOM");
-        roomHeader.setMinWidth(dpToPx(100));
-        roomHeader.setMaxWidth(dpToPx(100));
+        TableRow.LayoutParams roomHeaderParams = new TableRow.LayoutParams(roomWidth, TableRow.LayoutParams.WRAP_CONTENT);
+        roomHeaderParams.setMargins(dpToPx(2), dpToPx(2), dpToPx(2), dpToPx(2));
+        roomHeaderParams.weight = 0;
+        roomHeader.setLayoutParams(roomHeaderParams);
         headerRow.addView(roomHeader);
         
         timetableTable.addView(headerRow);
@@ -1050,32 +1072,43 @@ public class TimetableActivity extends AppCompatActivity implements NavigationVi
             
             for (TimetableEntry entry : todayEntries) {
                 TableRow row = new TableRow(this);
+                row.setBackgroundColor(Color.TRANSPARENT);
+                row.setGravity(Gravity.CENTER_VERTICAL);
                 
-                // Time column - convert to 12-hour format
+                // Time column - format: "10:00 AM-\n12:00 PM" (start time stays whole, line break after dash)
                 String startTime12 = convertTimeTo12Hour(entry.startTime);
                 String endTime12 = convertTimeTo12Hour(entry.endTime);
-                TextView timeCell = createCell(startTime12 + "-" + endTime12);
-                timeCell.setMinWidth(dpToPx(120));
-                timeCell.setMaxWidth(dpToPx(120));
+                String timeDisplay = startTime12 + "-\n" + endTime12;
+                TextView timeCell = createTimeCell(timeDisplay);
+                TableRow.LayoutParams timeCellParams = new TableRow.LayoutParams(timeWidth, TableRow.LayoutParams.WRAP_CONTENT);
+                timeCellParams.setMargins(dpToPx(2), dpToPx(2), dpToPx(2), dpToPx(2));
+                timeCellParams.weight = 0;
+                timeCell.setLayoutParams(timeCellParams);
                 row.addView(timeCell);
                 
                 // Subject column
                 TextView subjectCell = createCell(entry.subjectCode);
-                subjectCell.setMinWidth(dpToPx(150));
-                subjectCell.setMaxWidth(dpToPx(150));
+                TableRow.LayoutParams subjectCellParams = new TableRow.LayoutParams(subjectWidth, TableRow.LayoutParams.WRAP_CONTENT);
+                subjectCellParams.setMargins(dpToPx(2), dpToPx(2), dpToPx(2), dpToPx(2));
+                subjectCellParams.weight = 0;
+                subjectCell.setLayoutParams(subjectCellParams);
                 row.addView(subjectCell);
                 
                 // Teacher column
                 String teacherShort = formatTeacherName(entry.teacherName);
                 TextView teacherCell = createCell(teacherShort);
-                teacherCell.setMinWidth(dpToPx(120));
-                teacherCell.setMaxWidth(dpToPx(120));
+                TableRow.LayoutParams teacherCellParams = new TableRow.LayoutParams(teacherWidth, TableRow.LayoutParams.WRAP_CONTENT);
+                teacherCellParams.setMargins(dpToPx(2), dpToPx(2), dpToPx(2), dpToPx(2));
+                teacherCellParams.weight = 0;
+                teacherCell.setLayoutParams(teacherCellParams);
                 row.addView(teacherCell);
                 
                 // Room column
                 TextView roomCell = createCell(entry.room);
-                roomCell.setMinWidth(dpToPx(100));
-                roomCell.setMaxWidth(dpToPx(100));
+                TableRow.LayoutParams roomCellParams = new TableRow.LayoutParams(roomWidth, TableRow.LayoutParams.WRAP_CONTENT);
+                roomCellParams.setMargins(dpToPx(2), dpToPx(2), dpToPx(2), dpToPx(2));
+                roomCellParams.weight = 0;
+                roomCell.setLayoutParams(roomCellParams);
                 row.addView(roomCell);
                 
                 timetableTable.addView(row);
@@ -1083,63 +1116,73 @@ public class TimetableActivity extends AppCompatActivity implements NavigationVi
         }
     }
     
-    private TextView createCell(String text) {
-        TextView tv = new TextView(this);
-        tv.setText(text);
-        tv.setGravity(Gravity.CENTER);
-        tv.setPadding(dpToPx(12), dpToPx(12), dpToPx(12), dpToPx(12));
-        tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
-        tv.setTextColor(Color.parseColor("#333333"));
-        tv.setBackgroundColor(Color.WHITE);
-        tv.setMinHeight(dpToPx(60));
-        tv.setSingleLine(false);
-        tv.setMaxLines(3);
-        tv.setEllipsize(null); // Don't ellipsize
-        tv.setHorizontalScrollBarEnabled(false);
-        
-        TableRow.LayoutParams params = new TableRow.LayoutParams();
-        params.setMargins(dpToPx(1), dpToPx(1), dpToPx(1), dpToPx(1));
-        tv.setLayoutParams(params);
-        
-        return tv;
-    }
-
     private TextView createHeaderCell(String text) {
         TextView tv = new TextView(this);
         tv.setText(text);
-        tv.setGravity(Gravity.CENTER);
-        tv.setPadding(dpToPx(15), dpToPx(15), dpToPx(15), dpToPx(15));
-        tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        tv.setTextColor(Color.parseColor("#00b341")); // Green theme
+        tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
         tv.setTypeface(null, Typeface.BOLD);
-        tv.setTextColor(Color.parseColor("#333333"));
-        tv.setBackgroundColor(Color.parseColor("#f8f9fa"));
-        tv.setSingleLine(true);
-        tv.setMaxLines(1);
-
-        TableRow.LayoutParams params = new TableRow.LayoutParams();
-        params.setMargins(dpToPx(1), dpToPx(1), dpToPx(1), dpToPx(1));
-        tv.setLayoutParams(params);
-
+        tv.setGravity(Gravity.CENTER);
+        tv.setPadding(dpToPx(16), dpToPx(14), dpToPx(16), dpToPx(14));
+        tv.setBackgroundColor(Color.parseColor("#E8F5E9")); // Light green background
+        tv.setLetterSpacing(0.05f);
+        
+        // Add rounded corners effect with drawable
+        android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
+        bg.setColor(Color.parseColor("#E8F5E9")); // Light green
+        bg.setCornerRadius(dpToPx(8));
+        tv.setBackground(bg);
+        
+        // LayoutParams will be set in buildTimetableTable for consistent widths
         return tv;
     }
 
-    private TextView createTimeCell(String time) {
+    private TextView createCell(String text) {
         TextView tv = new TextView(this);
-        tv.setText(time);
-        tv.setGravity(Gravity.CENTER);
-        tv.setPadding(dpToPx(15), dpToPx(15), dpToPx(15), dpToPx(15));
-        tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
-        tv.setTextColor(Color.parseColor("#666666"));
-        tv.setBackgroundColor(Color.WHITE);
-        tv.setMinWidth(dpToPx(120));
-        tv.setMinHeight(dpToPx(50));
-        tv.setSingleLine(true);
-        tv.setMaxLines(1);
+        tv.setText(text != null ? text : "");
+        tv.setTextColor(Color.parseColor("#212121"));
+        tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        tv.setGravity(Gravity.CENTER_VERTICAL | Gravity.CENTER_HORIZONTAL);
+        tv.setPadding(dpToPx(16), dpToPx(14), dpToPx(16), dpToPx(14));
+        tv.setSingleLine(false);
+        tv.setMaxLines(3);
+        tv.setEllipsize(null);
+        tv.setMinHeight(dpToPx(60));
+        
+        // Modern cell background with rounded corners
+        android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
+        bg.setColor(Color.WHITE);
+        bg.setCornerRadius(dpToPx(8));
+        bg.setStroke(dpToPx(1), Color.parseColor("#E0E0E0"));
+        tv.setBackground(bg);
+        
+        // LayoutParams will be set in buildTimetableTable for consistent widths
+        return tv;
+    }
 
-        TableRow.LayoutParams params = new TableRow.LayoutParams();
-        params.setMargins(dpToPx(1), dpToPx(1), dpToPx(1), dpToPx(1));
-        tv.setLayoutParams(params);
-
+    private TextView createTimeCell(String text) {
+        TextView tv = new TextView(this);
+        tv.setText(text != null ? text : "");
+        tv.setTextColor(Color.parseColor("#00b341")); // Green theme
+        tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        tv.setTypeface(null, Typeface.BOLD);
+        tv.setGravity(Gravity.CENTER_VERTICAL | Gravity.CENTER_HORIZONTAL);
+        // Use same padding as regular cells for alignment
+        tv.setPadding(dpToPx(16), dpToPx(14), dpToPx(16), dpToPx(14));
+        tv.setSingleLine(false);
+        tv.setMaxLines(3);
+        tv.setEllipsize(null);
+        // Use same minHeight as regular cells for alignment
+        tv.setMinHeight(dpToPx(60));
+        
+        // Modern time cell background with green accent
+        android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
+        bg.setColor(Color.parseColor("#F1F8E9")); // Very light green
+        bg.setCornerRadius(dpToPx(8));
+        bg.setStroke(dpToPx(1), Color.parseColor("#A5D6A7")); // Light green border
+        tv.setBackground(bg);
+        
+        // LayoutParams will be set in buildTimetableTable for consistent widths
         return tv;
     }
 
@@ -1328,7 +1371,10 @@ public class TimetableActivity extends AppCompatActivity implements NavigationVi
             loadingProgress.setVisibility(View.GONE);
             timetableCard.setVisibility(View.GONE);
             emptyStateText.setVisibility(View.VISIBLE);
-            emptyStateText.setText("No schedule found for your section.");
+            TextView emptyTitle = emptyStateText.findViewById(R.id.emptyStateTitle);
+            if (emptyTitle != null) {
+                emptyTitle.setText("No schedule found for your section.");
+            }
         });
     }
 

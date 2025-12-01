@@ -3,9 +3,9 @@ package com.example.iattendance;
 import android.content.Intent;
 import android.os.Bundle;
 import android.view.MenuItem;
+import android.view.View;
 import android.widget.PopupMenu;
 import android.widget.TextView;
-import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
@@ -23,10 +23,10 @@ public class StudentDashboardActivity extends AppCompatActivity implements Navig
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        
+
         // Initialize session manager
         sessionManager = new SessionManager(this);
-        
+
         // Check if user is logged in and verified
         if (!sessionManager.isLoggedIn() || !sessionManager.isVerified()) {
             // User not logged in or not verified, redirect to login
@@ -36,7 +36,7 @@ public class StudentDashboardActivity extends AppCompatActivity implements Navig
             finish();
             return;
         }
-        
+
         setContentView(R.layout.activity_student_dashboard);
 
         // Setup drawer
@@ -44,38 +44,41 @@ public class StudentDashboardActivity extends AppCompatActivity implements Navig
         navigationView = findViewById(R.id.nav_view);
 
         // Setup hamburger menu icon
-        findViewById(R.id.menu_icon).setOnClickListener(v -> drawerLayout.openDrawer(GravityCompat.START));
+        View menuIcon = findViewById(R.id.menu_icon);
+        if (menuIcon != null) {
+            menuIcon.setOnClickListener(v -> drawerLayout.openDrawer(GravityCompat.START));
+        }
 
         // Setup three dots menu icon
-        findViewById(R.id.more_icon).setOnClickListener(v -> onOptionsIconClick());
+        View moreIcon = findViewById(R.id.more_icon);
+        if (moreIcon != null) {
+            moreIcon.setOnClickListener(v -> onOptionsIconClick());
+        }
 
-        // Don't use ActionBarDrawerToggle since we're using custom toolbar
-        // Just setup the drawer listener
-        drawerLayout.addDrawerListener(new androidx.drawerlayout.widget.DrawerLayout.DrawerListener() {
+        drawerLayout.addDrawerListener(new DrawerLayout.DrawerListener() {
             @Override
-            public void onDrawerOpened(@androidx.annotation.NonNull android.view.View drawerView) {}
-
-            @Override
-            public void onDrawerClosed(@androidx.annotation.NonNull android.view.View drawerView) {}
+            public void onDrawerOpened(@NonNull View drawerView) {}
 
             @Override
-            public void onDrawerSlide(@androidx.annotation.NonNull android.view.View drawerView, float slideOffset) {}
+            public void onDrawerClosed(@NonNull View drawerView) {}
+
+            @Override
+            public void onDrawerSlide(@NonNull View drawerView, float slideOffset) {}
 
             @Override
             public void onDrawerStateChanged(int newState) {}
         });
 
         navigationView.setNavigationItemSelectedListener(this);
+        navigationView.setCheckedItem(R.id.nav_dashboard);
 
         // Get user data from intent
         String userId = getIntent().getStringExtra("userId");
-        String userType = getIntent().getStringExtra("userType");
         String fullName = getIntent().getStringExtra("fullName");
-        String email = getIntent().getStringExtra("email");
 
         // Update nav header after layout is inflated
         navigationView.post(() -> {
-            android.view.View headerView = navigationView.getHeaderView(0);
+            View headerView = navigationView.getHeaderView(0);
             if (headerView != null) {
                 TextView navName = headerView.findViewById(R.id.nav_header_name);
                 TextView navEmail = headerView.findViewById(R.id.nav_header_email);
@@ -87,7 +90,7 @@ public class StudentDashboardActivity extends AppCompatActivity implements Navig
 
         // Set welcome message
         TextView welcomeText = findViewById(R.id.welcomeText);
-        if (welcomeText != null) {
+        if (welcomeText != null && fullName != null) {
             welcomeText.setText("Welcome, " + fullName + "!");
         }
 
@@ -102,7 +105,7 @@ public class StudentDashboardActivity extends AppCompatActivity implements Navig
         int id = item.getItemId();
 
         if (id == R.id.nav_dashboard) {
-            // Dashboard selected (already on dashboard)
+            // Already on dashboard
             drawerLayout.closeDrawer(GravityCompat.START);
             return true;
         } else if (id == R.id.nav_timetable) {
@@ -113,6 +116,17 @@ public class StudentDashboardActivity extends AppCompatActivity implements Navig
             intent.putExtra("fullName", getIntent().getStringExtra("fullName"));
             intent.putExtra("email", getIntent().getStringExtra("email"));
             startActivity(intent);
+            finish();
+            return true;
+        } else if (id == R.id.nav_my_attendance) {
+            // Navigate to My Attendance
+            Intent intent = new Intent(this, StudentAttendanceActivity.class);
+            intent.putExtra("userId", getIntent().getStringExtra("userId"));
+            intent.putExtra("userType", getIntent().getStringExtra("userType"));
+            intent.putExtra("fullName", getIntent().getStringExtra("fullName"));
+            intent.putExtra("email", getIntent().getStringExtra("email"));
+            startActivity(intent);
+            finish();
             return true;
         }
 
@@ -121,50 +135,44 @@ public class StudentDashboardActivity extends AppCompatActivity implements Navig
 
     @Override
     public void onBackPressed() {
-        if (drawerLayout.isDrawerOpen(GravityCompat.START)) {
+        if (drawerLayout != null && drawerLayout.isDrawerOpen(GravityCompat.START)) {
             drawerLayout.closeDrawer(GravityCompat.START);
         } else {
             super.onBackPressed();
         }
     }
 
-    @SuppressWarnings("StatementWithEmptyBody")
     public void onOptionsIconClick() {
-        // Show popup menu from the more_icon view
-        android.view.View moreIcon = findViewById(R.id.more_icon);
+        View moreIcon = findViewById(R.id.more_icon);
         if (moreIcon != null) {
-            showPopupMenu(moreIcon);
+            PopupMenu popupMenu = new PopupMenu(
+                    new android.view.ContextThemeWrapper(this, R.style.PopupMenuStyle),
+                    moreIcon
+            );
+            popupMenu.getMenuInflater().inflate(R.menu.toolbar_menu, popupMenu.getMenu());
+            popupMenu.setGravity(android.view.Gravity.END);
+
+            popupMenu.setOnMenuItemClickListener(menuItem -> {
+                if (menuItem.getItemId() == R.id.menu_logout) {
+                    performLogout();
+                    return true;
+                }
+                return false;
+            });
+
+            popupMenu.show();
         }
     }
-    
-    private void showPopupMenu(android.view.View view) {
-        android.widget.PopupMenu popupMenu = new android.widget.PopupMenu(new android.view.ContextThemeWrapper(this, R.style.PopupMenuStyle), view);
-        popupMenu.getMenuInflater().inflate(R.menu.toolbar_menu, popupMenu.getMenu());
-        
-        popupMenu.setGravity(android.view.Gravity.END);
-        
-        popupMenu.setOnMenuItemClickListener(item -> {
-            if (item.getItemId() == R.id.menu_logout) {
-                performLogout();
-                return true;
-            }
-            return false;
-        });
-        
-        popupMenu.show();
-    }
-
 
     private void performLogout() {
-        sessionManager.logout();
+        if (sessionManager != null) {
+            sessionManager.logout();
+        }
         Intent intent = new Intent(this, MainActivity.class);
         intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
         startActivity(intent);
         finish();
     }
 }
-
-
-
 
 

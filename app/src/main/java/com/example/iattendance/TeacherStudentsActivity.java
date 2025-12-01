@@ -1,12 +1,26 @@
 package com.example.iattendance;
 
+import android.app.Dialog;
 import android.content.Intent;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.Canvas;
+import android.graphics.Paint;
+import android.graphics.PorterDuff;
+import android.graphics.PorterDuffXfermode;
+import android.graphics.Rect;
+import android.graphics.RectF;
 import android.os.Bundle;
+import android.util.Base64;
 import android.util.Log;
 import android.view.MenuItem;
 import android.view.View;
+import android.view.ViewGroup;
+import android.view.Window;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
+import android.widget.EditText;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.Spinner;
@@ -41,11 +55,14 @@ public class TeacherStudentsActivity extends AppCompatActivity implements Naviga
     private Spinner classSpinner;
     private RecyclerView studentsRecyclerView;
     private ProgressBar loadingProgress;
-    private TextView emptyStateText;
+    private View emptyStateText;
+    private EditText searchEditText;
+    private View searchCard;
     
     private String teacherId;
     private List<ClassItem> teacherClasses = new ArrayList<>();
     private List<StudentItem> currentStudents = new ArrayList<>();
+    private List<StudentItem> allStudents = new ArrayList<>(); // Store all fetched students for filtering
     private StudentsAdapter studentsAdapter;
     private String selectedClassId;
     private String selectedSection;
@@ -80,8 +97,9 @@ public class TeacherStudentsActivity extends AppCompatActivity implements Naviga
         String createdAt;
         String section;
         String yearLevel;
+        String profilePictureBase64; // Base64 string for profile picture
         
-        StudentItem(String id, String studentId, String fullName, String email, String createdAt, String section, String yearLevel) {
+        StudentItem(String id, String studentId, String fullName, String email, String createdAt, String section, String yearLevel, String profilePictureBase64) {
             this.id = id;
             this.studentId = studentId;
             this.fullName = fullName;
@@ -89,6 +107,7 @@ public class TeacherStudentsActivity extends AppCompatActivity implements Naviga
             this.createdAt = createdAt;
             this.section = section;
             this.yearLevel = yearLevel;
+            this.profilePictureBase64 = profilePictureBase64;
         }
     }
 
@@ -115,6 +134,8 @@ public class TeacherStudentsActivity extends AppCompatActivity implements Naviga
         studentsRecyclerView = findViewById(R.id.studentsRecyclerView);
         loadingProgress = findViewById(R.id.loadingProgress);
         emptyStateText = findViewById(R.id.emptyStateText);
+        searchEditText = findViewById(R.id.searchEditText);
+        searchCard = findViewById(R.id.searchCard);
 
         // Setup drawer
         findViewById(R.id.menu_icon).setOnClickListener(v -> drawerLayout.openDrawer(GravityCompat.START));
@@ -141,8 +162,23 @@ public class TeacherStudentsActivity extends AppCompatActivity implements Naviga
 
         // Setup RecyclerView
         studentsAdapter = new StudentsAdapter(new ArrayList<>());
+        studentsAdapter.setOnStudentClickListener(student -> showStudentDetailsModal(student));
         studentsRecyclerView.setLayoutManager(new LinearLayoutManager(this));
         studentsRecyclerView.setAdapter(studentsAdapter);
+
+        // Setup search functionality
+        searchEditText.addTextChangedListener(new android.text.TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+                filterStudents(s.toString());
+            }
+
+            @Override
+            public void afterTextChanged(android.text.Editable s) {}
+        });
 
         // Setup class spinner
         classSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
@@ -154,13 +190,18 @@ public class TeacherStudentsActivity extends AppCompatActivity implements Naviga
                     selectedSection = selectedClass.section;
                     selectedYearLevel = selectedClass.yearLevel;
                     Log.d(TAG, "Class selected: " + selectedClass.name + " (ID: " + selectedClassId + ", Section: " + selectedSection + ", Year: " + selectedYearLevel + ")");
+                    // Clear search when new class is selected
+                    searchEditText.setText("");
                     fetchStudentsForClass(selectedSection, selectedYearLevel);
                 } else {
                     selectedClassId = null;
                     selectedSection = null;
                     selectedYearLevel = null;
                     currentStudents.clear();
+                    allStudents.clear();
                     studentsAdapter.updateStudents(new ArrayList<>());
+                    searchEditText.setText("");
+                    searchCard.setVisibility(View.GONE);
                     showEmptyState();
                 }
             }
@@ -196,6 +237,10 @@ public class TeacherStudentsActivity extends AppCompatActivity implements Naviga
 
                 Log.d(TAG, "Teacher ID: '" + userId + "', normalized: '" + normalizedTeacherId + "'");
                 Log.d(TAG, "Total classes in database: " + snapshot.getChildrenCount());
+
+                // Track matching classes and pending async operations
+                final int[] pendingOperations = {0};
+                final int[] matchedClasses = {0};
 
                 for (DataSnapshot classSnapshot : snapshot.getChildren()) {
                     try {
@@ -239,20 +284,57 @@ public class TeacherStudentsActivity extends AppCompatActivity implements Naviga
                         }
 
                         if (matches) {
+                            matchedClasses[0]++;
+                            pendingOperations[0]++;
                             // Fetch subject info to build class name
                             String subjectId = dataSnapshot.child("subject_id").getValue(String.class);
-                            fetchSubjectInfoAndAddClass(classId, subjectId, section, yearLevel);
+                            fetchSubjectInfoAndAddClass(classId, subjectId, section, yearLevel, () -> {
+                                // Callback when async operation completes
+                                synchronized (pendingOperations) {
+                                    pendingOperations[0]--;
+                                    if (pendingOperations[0] == 0) {
+                                        // All async operations completed, check if we have classes
+                                        runOnUiThread(() -> {
+                                            if (loadingProgress != null) {
+                                                loadingProgress.setVisibility(View.GONE);
+                                            }
+                                            if (teacherClasses.isEmpty()) {
+                                                if (emptyStateText != null) {
+                                                    emptyStateText.setVisibility(View.VISIBLE);
+                                                    TextView emptyTitle = emptyStateText.findViewById(R.id.emptyStateTitle);
+                                                    if (emptyTitle != null) {
+                                                        emptyTitle.setText("No classes found for this teacher");
+                                                    }
+                                                }
+                                                Toast.makeText(TeacherStudentsActivity.this, "No classes found for this teacher", Toast.LENGTH_LONG).show();
+                                            } else {
+                                                if (emptyStateText != null) {
+                                                    emptyStateText.setVisibility(View.GONE);
+                                                }
+                                            }
+                                        });
+                                    }
+                                }
+                            });
                         }
                     } catch (Exception e) {
                         Log.e(TAG, "Error parsing class " + classSnapshot.getKey() + ": " + e.getMessage());
                     }
                 }
 
-                if (teacherClasses.isEmpty()) {
+                // If no classes matched at all, show error immediately
+                if (matchedClasses[0] == 0) {
                     runOnUiThread(() -> {
-                        loadingProgress.setVisibility(View.GONE);
-                        emptyStateText.setText("No classes found for this teacher");
-                        emptyStateText.setVisibility(View.VISIBLE);
+                        if (loadingProgress != null) {
+                            loadingProgress.setVisibility(View.GONE);
+                        }
+                        if (emptyStateText != null) {
+                            emptyStateText.setVisibility(View.VISIBLE);
+                            TextView emptyTitle = emptyStateText.findViewById(R.id.emptyStateTitle);
+                            if (emptyTitle != null) {
+                                emptyTitle.setText("No classes found for this teacher");
+                            }
+                        }
                         Toast.makeText(TeacherStudentsActivity.this, "No classes found for this teacher", Toast.LENGTH_LONG).show();
                     });
                 }
@@ -262,20 +344,30 @@ public class TeacherStudentsActivity extends AppCompatActivity implements Naviga
             public void onCancelled(@NonNull DatabaseError error) {
                 Log.e(TAG, "Error fetching teacher classes: " + error.getMessage());
                 runOnUiThread(() -> {
-                    loadingProgress.setVisibility(View.GONE);
-                    emptyStateText.setText("Error loading classes");
-                    emptyStateText.setVisibility(View.VISIBLE);
+                    if (loadingProgress != null) {
+                        loadingProgress.setVisibility(View.GONE);
+                    }
+                    if (emptyStateText != null) {
+                        emptyStateText.setVisibility(View.VISIBLE);
+                        TextView emptyTitle = emptyStateText.findViewById(R.id.emptyStateTitle);
+                        if (emptyTitle != null) {
+                            emptyTitle.setText("Error loading classes");
+                        }
+                    }
                 });
             }
         });
     }
 
-    private void fetchSubjectInfoAndAddClass(String classId, String subjectId, String section, String yearLevel) {
+    private void fetchSubjectInfoAndAddClass(String classId, String subjectId, String section, String yearLevel, Runnable onComplete) {
         if (subjectId == null) {
             // Add class without subject info
             String className = "Class " + classId + " - " + section + " (Year " + yearLevel + ")";
             teacherClasses.add(new ClassItem(classId, className, section, yearLevel));
             updateClassSpinner();
+            if (onComplete != null) {
+                onComplete.run();
+            }
             return;
         }
 
@@ -312,6 +404,9 @@ public class TeacherStudentsActivity extends AppCompatActivity implements Naviga
 
                 teacherClasses.add(new ClassItem(classId, className, section, yearLevel));
                 updateClassSpinner();
+                if (onComplete != null) {
+                    onComplete.run();
+                }
             }
 
             @Override
@@ -321,6 +416,9 @@ public class TeacherStudentsActivity extends AppCompatActivity implements Naviga
                 String className = "Class " + classId + " - " + section + " (Year " + yearLevel + ")";
                 teacherClasses.add(new ClassItem(classId, className, section, yearLevel));
                 updateClassSpinner();
+                if (onComplete != null) {
+                    onComplete.run();
+                }
             }
         });
     }
@@ -333,7 +431,40 @@ public class TeacherStudentsActivity extends AppCompatActivity implements Naviga
                 classNames.add(classItem.name);
             }
 
-            ArrayAdapter<String> adapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, classNames);
+            // Custom adapter to make placeholder text visible
+            ArrayAdapter<String> adapter = new ArrayAdapter<String>(this, android.R.layout.simple_spinner_item, classNames) {
+                @Override
+                public View getView(int position, View convertView, ViewGroup parent) {
+                    View view = super.getView(position, convertView, parent);
+                    TextView textView = (TextView) view.findViewById(android.R.id.text1);
+                    if (textView != null) {
+                        if (position == 0) {
+                            // Placeholder text - make it dark gray for visibility
+                            textView.setTextColor(0xFF424242); // Dark gray
+                        } else {
+                            // Regular items - black
+                            textView.setTextColor(0xFF212121); // Dark gray/black
+                        }
+                    }
+                    return view;
+                }
+
+                @Override
+                public View getDropDownView(int position, View convertView, ViewGroup parent) {
+                    View view = super.getDropDownView(position, convertView, parent);
+                    TextView textView = (TextView) view.findViewById(android.R.id.text1);
+                    if (textView != null) {
+                        if (position == 0) {
+                            // Placeholder text in dropdown - make it dark gray for visibility
+                            textView.setTextColor(0xFF424242); // Dark gray
+                        } else {
+                            // Regular items in dropdown - black
+                            textView.setTextColor(0xFF212121); // Dark gray/black
+                        }
+                    }
+                    return view;
+                }
+            };
             adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
             classSpinner.setAdapter(adapter);
 
@@ -355,6 +486,7 @@ public class TeacherStudentsActivity extends AppCompatActivity implements Naviga
         studentsRef.addListenerForSingleValueEvent(new ValueEventListener() {
             @Override
             public void onDataChange(@NonNull DataSnapshot snapshot) {
+                allStudents.clear();
                 currentStudents.clear();
 
                 for (DataSnapshot studentSnapshot : snapshot.getChildren()) {
@@ -381,6 +513,15 @@ public class TeacherStudentsActivity extends AppCompatActivity implements Naviga
                             String fullName = dataSnapshot.child("full_name").getValue(String.class);
                             String email = dataSnapshot.child("email").getValue(String.class);
                             String createdAt = dataSnapshot.child("created_at").getValue(String.class);
+                            // Fetch profile_picture (which contains base64 string in Firebase)
+                            String profilePicture = dataSnapshot.child("profile_picture").getValue(String.class);
+                            
+                            // Log profile picture fetch status
+                            if (profilePicture != null && !profilePicture.isEmpty()) {
+                                Log.d(TAG, "Fetched profile_picture for student " + studentId + ", length: " + profilePicture.length());
+                            } else {
+                                Log.d(TAG, "No profile_picture found for student " + studentId);
+                            }
 
                             if (fullName == null || fullName.isEmpty()) {
                                 if (firstName != null && lastName != null) {
@@ -395,15 +536,17 @@ public class TeacherStudentsActivity extends AppCompatActivity implements Naviga
                             }
 
                             if (id != null && studentId != null) {
-                                currentStudents.add(new StudentItem(
+                                StudentItem student = new StudentItem(
                                     id,
                                     studentId,
                                     fullName,
                                     email != null ? email : "",
                                     createdAt != null ? createdAt : "",
                                     studentSection,
-                                    studentYearLevel
-                                ));
+                                    studentYearLevel,
+                                    profilePicture != null ? profilePicture : "" // Base64 string from Firebase
+                                );
+                                allStudents.add(student);
                             }
                         }
                     } catch (Exception e) {
@@ -413,18 +556,22 @@ public class TeacherStudentsActivity extends AppCompatActivity implements Naviga
 
                 runOnUiThread(() -> {
                     loadingProgress.setVisibility(View.GONE);
-                    if (currentStudents.isEmpty()) {
+                    if (allStudents.isEmpty()) {
+                        searchCard.setVisibility(View.GONE);
                         showEmptyState();
                     } else {
                         emptyStateText.setVisibility(View.GONE);
-                        studentsAdapter.updateStudents(currentStudents);
-                        studentsRecyclerView.setVisibility(View.VISIBLE);
+                        // Show search card when students are loaded
+                        searchCard.setVisibility(View.VISIBLE);
+                        // Apply current search filter if any
+                        String searchQuery = searchEditText.getText().toString();
+                        filterStudents(searchQuery);
                         // Show section header when students are loaded
                         TextView sectionHeader = findViewById(R.id.studentsSectionHeader);
                         if (sectionHeader != null) {
                             sectionHeader.setVisibility(View.VISIBLE);
                         }
-                        Log.d(TAG, "Loaded " + currentStudents.size() + " students");
+                        Log.d(TAG, "Loaded " + allStudents.size() + " students");
                     }
                 });
             }
@@ -433,17 +580,61 @@ public class TeacherStudentsActivity extends AppCompatActivity implements Naviga
             public void onCancelled(@NonNull DatabaseError error) {
                 Log.e(TAG, "Error fetching students: " + error.getMessage());
                 runOnUiThread(() -> {
-                    loadingProgress.setVisibility(View.GONE);
-                    studentsRecyclerView.setVisibility(View.GONE);
-                    emptyStateText.setVisibility(View.VISIBLE);
-                    // Update error message in empty state
-                    TextView emptyTitle = ((LinearLayout) emptyStateText).findViewById(R.id.emptyStateTitle);
-                    if (emptyTitle != null) {
-                        emptyTitle.setText("Error loading students");
+                    if (loadingProgress != null) {
+                        loadingProgress.setVisibility(View.GONE);
+                    }
+                    if (studentsRecyclerView != null) {
+                        studentsRecyclerView.setVisibility(View.GONE);
+                    }
+                    if (emptyStateText != null) {
+                        emptyStateText.setVisibility(View.VISIBLE);
+                        // Update error message in empty state
+                        TextView emptyTitle = emptyStateText.findViewById(R.id.emptyStateTitle);
+                        if (emptyTitle != null) {
+                            emptyTitle.setText("Error loading students");
+                        }
                     }
                 });
             }
         });
+    }
+
+    private void filterStudents(String query) {
+        currentStudents.clear();
+        
+        if (query == null || query.trim().isEmpty()) {
+            // No filter, show all students
+            currentStudents.addAll(allStudents);
+        } else {
+            // Filter by name or ID (case-insensitive)
+            String lowerQuery = query.toLowerCase().trim();
+            for (StudentItem student : allStudents) {
+                if ((student.fullName != null && student.fullName.toLowerCase().contains(lowerQuery)) ||
+                    (student.studentId != null && student.studentId.toLowerCase().contains(lowerQuery))) {
+                    currentStudents.add(student);
+                }
+            }
+        }
+        
+        // Update adapter
+        studentsAdapter.updateStudents(currentStudents);
+        
+        // Show/hide empty state
+        if (currentStudents.isEmpty()) {
+            emptyStateText.setVisibility(View.VISIBLE);
+            studentsRecyclerView.setVisibility(View.GONE);
+            TextView emptyTitle = emptyStateText.findViewById(R.id.emptyStateTitle);
+            if (emptyTitle != null) {
+                if (query == null || query.trim().isEmpty()) {
+                    emptyTitle.setText("No students found");
+                } else {
+                    emptyTitle.setText("No students match \"" + query + "\"");
+                }
+            }
+        } else {
+            emptyStateText.setVisibility(View.GONE);
+            studentsRecyclerView.setVisibility(View.VISIBLE);
+        }
     }
 
     private void showEmptyState() {
@@ -456,33 +647,31 @@ public class TeacherStudentsActivity extends AppCompatActivity implements Naviga
     @Override
     public boolean onNavigationItemSelected(@NonNull MenuItem item) {
         int id = item.getItemId();
+        Intent intent = null;
 
         if (id == R.id.nav_dashboard) {
-            Intent intent = new Intent(this, TeacherDashboardActivity.class);
-            intent.putExtra("userId", getIntent().getStringExtra("userId"));
-            intent.putExtra("userType", getIntent().getStringExtra("userType"));
-            intent.putExtra("fullName", getIntent().getStringExtra("fullName"));
-            intent.putExtra("email", getIntent().getStringExtra("email"));
-            startActivity(intent);
-            finish();
-            drawerLayout.closeDrawer(GravityCompat.START);
-            return true;
+            intent = new Intent(this, TeacherDashboardActivity.class);
         } else if (id == R.id.nav_timetable) {
-            Intent intent = new Intent(this, TeacherTimetableActivity.class);
-            intent.putExtra("userId", getIntent().getStringExtra("userId"));
-            intent.putExtra("userType", getIntent().getStringExtra("userType"));
-            intent.putExtra("fullName", getIntent().getStringExtra("fullName"));
-            intent.putExtra("email", getIntent().getStringExtra("email"));
-            startActivity(intent);
-            finish();
-            drawerLayout.closeDrawer(GravityCompat.START);
-            return true;
+            intent = new Intent(this, TeacherTimetableActivity.class);
         } else if (id == R.id.nav_students) {
+            // Already on students page
             drawerLayout.closeDrawer(GravityCompat.START);
             return true;
+        } else if (id == R.id.nav_attendance) {
+            intent = new Intent(this, RfidAttendanceActivity.class);
         }
 
-        return false;
+        if (intent != null) {
+            intent.putExtra("userId", getIntent().getStringExtra("userId"));
+            intent.putExtra("userType", getIntent().getStringExtra("userType"));
+            intent.putExtra("fullName", getIntent().getStringExtra("fullName"));
+            intent.putExtra("email", getIntent().getStringExtra("email"));
+            startActivity(intent);
+            finish();
+        }
+
+        drawerLayout.closeDrawer(GravityCompat.START);
+        return true;
     }
 
     @Override
@@ -525,6 +714,141 @@ public class TeacherStudentsActivity extends AppCompatActivity implements Naviga
         intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
         startActivity(intent);
         finish();
+    }
+
+    private void showStudentDetailsModal(StudentItem student) {
+        Dialog dialog = new Dialog(this);
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+        dialog.setContentView(R.layout.dialog_student_details);
+        dialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);
+        dialog.getWindow().setLayout(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+
+        // Initialize views
+        ImageView closeButton = dialog.findViewById(R.id.closeButton);
+        ImageView modalAvatar = dialog.findViewById(R.id.modalStudentAvatar);
+        TextView modalName = dialog.findViewById(R.id.modalStudentName);
+        TextView modalStudentId = dialog.findViewById(R.id.modalStudentId);
+        TextView modalEmail = dialog.findViewById(R.id.modalStudentEmail);
+        TextView modalCreatedAt = dialog.findViewById(R.id.modalStudentCreatedAt);
+        TextView modalSection = dialog.findViewById(R.id.modalStudentSection);
+        TextView modalYearLevel = dialog.findViewById(R.id.modalStudentYearLevel);
+
+        // Populate data
+        if (modalName != null) modalName.setText(student.fullName);
+        if (modalStudentId != null) modalStudentId.setText(student.studentId);
+        if (modalEmail != null) modalEmail.setText(student.email != null && !student.email.isEmpty() ? student.email : "N/A");
+        if (modalCreatedAt != null) {
+            String dateStr = student.createdAt != null && !student.createdAt.isEmpty() ? 
+                formatDateForModal(student.createdAt) : "N/A";
+            modalCreatedAt.setText(dateStr);
+        }
+        if (modalSection != null) modalSection.setText(student.section != null ? student.section : "N/A");
+        if (modalYearLevel != null) modalYearLevel.setText(student.yearLevel != null ? "Year " + student.yearLevel : "N/A");
+
+        // Load profile picture
+        if (student.profilePictureBase64 != null && !student.profilePictureBase64.isEmpty()) {
+            Bitmap bitmap = decodeBase64ToBitmap(student.profilePictureBase64);
+            if (bitmap != null) {
+                Bitmap circularBitmap = getCircularBitmap(bitmap);
+                if (modalAvatar != null) {
+                    modalAvatar.setImageBitmap(circularBitmap);
+                    modalAvatar.setScaleType(ImageView.ScaleType.CENTER_CROP);
+                    modalAvatar.clearColorFilter();
+                    modalAvatar.setBackground(null);
+                }
+            } else {
+                if (modalAvatar != null) {
+                    modalAvatar.setImageResource(R.drawable.ic_person);
+                    modalAvatar.setColorFilter(0xFF2196F3);
+                    modalAvatar.setBackgroundResource(R.drawable.student_avatar_background);
+                }
+            }
+        } else {
+            if (modalAvatar != null) {
+                modalAvatar.setImageResource(R.drawable.ic_person);
+                modalAvatar.setColorFilter(0xFF2196F3);
+                modalAvatar.setBackgroundResource(R.drawable.student_avatar_background);
+            }
+        }
+
+        // Close button
+        if (closeButton != null) {
+            closeButton.setOnClickListener(v -> dialog.dismiss());
+        }
+
+        // Close on outside click
+        dialog.setCanceledOnTouchOutside(true);
+
+        dialog.show();
+    }
+
+    private String formatDateForModal(String dateStr) {
+        try {
+            if (dateStr == null || dateStr.isEmpty()) return "N/A";
+            if (dateStr.length() >= 10) {
+                return dateStr.substring(0, 10);
+            }
+            return dateStr;
+        } catch (Exception e) {
+            return dateStr;
+        }
+    }
+
+    private Bitmap decodeBase64ToBitmap(String base64String) {
+        try {
+            if (base64String == null || base64String.isEmpty()) {
+                return null;
+            }
+            
+            String base64Image = base64String.trim();
+            if (base64Image.contains(",")) {
+                base64Image = base64Image.substring(base64Image.indexOf(",") + 1);
+            }
+            
+            base64Image = base64Image.replaceAll("\\s", "");
+            
+            byte[] decodedBytes = Base64.decode(base64Image, Base64.DEFAULT);
+            
+            if (decodedBytes == null || decodedBytes.length == 0) {
+                return null;
+            }
+            
+            return BitmapFactory.decodeByteArray(decodedBytes, 0, decodedBytes.length);
+        } catch (Exception e) {
+            Log.e(TAG, "Error decoding base64: " + e.getMessage(), e);
+            return null;
+        }
+    }
+
+    private Bitmap getCircularBitmap(Bitmap bitmap) {
+        try {
+            int size = Math.min(bitmap.getWidth(), bitmap.getHeight());
+            Bitmap output = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
+            Canvas canvas = new Canvas(output);
+            
+            final Paint paint = new Paint();
+            final Rect rect = new Rect(0, 0, size, size);
+            final RectF rectF = new RectF(rect);
+            
+            paint.setAntiAlias(true);
+            paint.setFilterBitmap(true);
+            paint.setDither(true);
+            
+            canvas.drawARGB(0, 0, 0, 0);
+            canvas.drawOval(rectF, paint);
+            
+            paint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.SRC_IN));
+            
+            int x = (bitmap.getWidth() - size) / 2;
+            int y = (bitmap.getHeight() - size) / 2;
+            Rect srcRect = new Rect(x, y, x + size, y + size);
+            canvas.drawBitmap(bitmap, srcRect, rect, paint);
+            
+            return output;
+        } catch (Exception e) {
+            Log.e(TAG, "Error creating circular bitmap: " + e.getMessage(), e);
+            return bitmap;
+        }
     }
 }
 

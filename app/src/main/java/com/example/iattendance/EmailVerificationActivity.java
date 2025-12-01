@@ -1,6 +1,7 @@
 package com.example.iattendance;
 
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.view.View;
 import android.widget.EditText;
@@ -33,11 +34,16 @@ public class EmailVerificationActivity extends AppCompatActivity {
     private String email;
     private DatabaseReference mDatabase;
     
-    private int countdownSeconds = 1800; // 30 minutes (matching website)
+    private int countdownSeconds = 300; // 5 minutes
     private boolean isTimerRunning = false;
     private String currentVerificationCode; // Store code locally for faster verification
     private int cooldownSeconds = 0; // Resend cooldown timer
-    private static final long CODE_EXPIRATION_TIME = 30 * 60 * 1000; // 30 minutes in milliseconds
+    private boolean isCooldownTimerRunning = false; // Track if cooldown timer thread is running
+    private static final long CODE_EXPIRATION_TIME = 5 * 60 * 1000; // 5 minutes in milliseconds
+    private static final long COOLDOWN_TIME = 60 * 1000; // 60 seconds in milliseconds
+    private static final String PREF_NAME = "EmailVerificationPrefs";
+    private static final String KEY_COOLDOWN_END_TIME = "cooldown_end_time";
+    private SharedPreferences sharedPrefs;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -52,6 +58,9 @@ public class EmailVerificationActivity extends AppCompatActivity {
         
         // Initialize Firebase
         mDatabase = FirebaseDatabase.getInstance().getReference();
+        
+        // Initialize SharedPreferences for persistent cooldown
+        sharedPrefs = getSharedPreferences(PREF_NAME, MODE_PRIVATE);
         
         // Check if account is deleted before proceeding
         checkAccountStatus();
@@ -226,9 +235,8 @@ public class EmailVerificationActivity extends AppCompatActivity {
         // Set email display
         emailDisplayText.setText(email);
         
-        // Initially disable resend button (cooldown active)
-        resendButton.setEnabled(false);
-        resendButton.setAlpha(0.6f);
+        // Check and restore cooldown state
+        checkAndRestoreCooldown();
         
         // Setup code input listeners
         setupCodeInputListeners();
@@ -453,8 +461,12 @@ public class EmailVerificationActivity extends AppCompatActivity {
                             // Start countdown timer with remaining time
                             startCountdownTimer();
                             
-                            // Start cooldown timer (60 seconds - matching website)
-                            startCooldownTimer();
+                            // Only start cooldown timer if not already active
+                            if (!isCooldownActive() && !isCooldownTimerRunning) {
+                                startCooldownTimer();
+                            } else {
+                                android.util.Log.d("EmailVerification", "Cooldown already active, not resetting");
+                            }
                             
                             // Don't send email again, just show message
                             Toast.makeText(EmailVerificationActivity.this, 
@@ -500,13 +512,17 @@ public class EmailVerificationActivity extends AppCompatActivity {
         codeData.put("timestamp", timestamp);
         
         mDatabase.child("verification_codes").child(userId).setValue(codeData);
-        
-        // Reset countdown timer to 30 minutes
-        countdownSeconds = 1800;
+
+        // Reset countdown timer to 5 minutes
+        countdownSeconds = 300;
         startCountdownTimer();
         
-        // Start initial cooldown timer (60 seconds - matching website)
-        startCooldownTimer();
+        // Only start cooldown timer if not already active
+        if (!isCooldownActive() && !isCooldownTimerRunning) {
+            startCooldownTimer();
+        } else {
+            android.util.Log.d("EmailVerification", "Cooldown already active, not resetting");
+        }
         
         // Send verification code via email
         sendVerificationEmail(verificationCode);
@@ -699,16 +715,15 @@ public class EmailVerificationActivity extends AppCompatActivity {
     private void resendCode() {
         android.util.Log.d("EmailVerification", "=== RESEND BUTTON CLICKED ===");
         
-        // Disable resend button immediately and make it semi-transparent
-        resendButton.setEnabled(false);
-        resendButton.setAlpha(0.6f);
+        // Disable resend button immediately and set grey color
+        updateResendButtonState(false);
         
         // INVALIDATE CURRENT CODE (matching website behavior)
         android.util.Log.d("EmailVerification", "Invalidating current verification code");
         currentVerificationCode = null; // Clear local cache
         mDatabase.child("verification_codes").child(userId).removeValue(); // Remove from Firebase
         
-        // Generate and send new verification code (this will reset timer to 30 minutes and start timers)
+        // Generate and send new verification code (this will reset timer to 5 minutes and start cooldown timer)
         android.util.Log.d("EmailVerification", "Generating NEW verification code for resend");
         generateAndSendVerificationCode();
         
@@ -718,9 +733,74 @@ public class EmailVerificationActivity extends AppCompatActivity {
         android.util.Log.d("EmailVerification", "=== RESEND PROCESS COMPLETED ===");
     }
     
+    private void checkAndRestoreCooldown() {
+        long cooldownEndTime = sharedPrefs.getLong(KEY_COOLDOWN_END_TIME, 0);
+        long currentTime = System.currentTimeMillis();
+        
+        if (cooldownEndTime > currentTime) {
+            // Cooldown still active
+            long remainingTime = (cooldownEndTime - currentTime) / 1000; // Convert to seconds
+            cooldownSeconds = (int) remainingTime;
+            android.util.Log.d("EmailVerification", "Restoring cooldown: " + cooldownSeconds + " seconds remaining");
+            startCooldownTimer(cooldownSeconds); // Pass remaining time
+            isCooldownTimerRunning = true; // Mark as running
+        } else {
+            // Cooldown expired
+            updateResendButtonState(true);
+            if (cooldownText != null) {
+                cooldownText.setVisibility(android.view.View.GONE);
+            }
+            // Clear cooldown from SharedPreferences
+            sharedPrefs.edit().remove(KEY_COOLDOWN_END_TIME).apply();
+            isCooldownTimerRunning = false;
+        }
+    }
+    
+    private boolean isCooldownActive() {
+        long cooldownEndTime = sharedPrefs.getLong(KEY_COOLDOWN_END_TIME, 0);
+        long currentTime = System.currentTimeMillis();
+        return cooldownEndTime > currentTime;
+    }
+    
+    private void updateResendButtonState(boolean enabled) {
+        if (resendButton == null) return;
+        
+        resendButton.setEnabled(enabled);
+        if (enabled) {
+            // Green color when enabled
+            resendButton.setTextColor(android.graphics.Color.parseColor("#00b341"));
+            resendButton.setAlpha(1.0f);
+        } else {
+            // Grey color when disabled
+            resendButton.setTextColor(android.graphics.Color.parseColor("#6c757d"));
+            resendButton.setAlpha(1.0f);
+        }
+    }
+    
     private void startCooldownTimer() {
-        cooldownSeconds = 60; // 60 second cooldown (matching website)
-        android.util.Log.d("EmailVerification", "Starting cooldown timer: 60 seconds");
+        startCooldownTimer(60); // Default 60 seconds
+    }
+    
+    private void startCooldownTimer(int initialSeconds) {
+        // Prevent starting multiple timer threads
+        if (isCooldownTimerRunning) {
+            android.util.Log.d("EmailVerification", "Cooldown timer already running, skipping");
+            return;
+        }
+        
+        cooldownSeconds = initialSeconds;
+        long cooldownEndTime = System.currentTimeMillis() + (cooldownSeconds * 1000);
+        
+        // Save cooldown end time to SharedPreferences
+        sharedPrefs.edit().putLong(KEY_COOLDOWN_END_TIME, cooldownEndTime).apply();
+        
+        android.util.Log.d("EmailVerification", "Starting cooldown timer: " + cooldownSeconds + " seconds");
+        
+        // Mark timer as running
+        isCooldownTimerRunning = true;
+        
+        // Update button state immediately
+        updateResendButtonState(false);
         
         new Thread(() -> {
             while (cooldownSeconds > 0) {
@@ -729,14 +809,16 @@ public class EmailVerificationActivity extends AppCompatActivity {
                         cooldownText.setText("Resend available in: " + cooldownSeconds + "s");
                         cooldownText.setVisibility(android.view.View.VISIBLE);
                     }
-                    // Keep resend button disabled during cooldown
-                    resendButton.setEnabled(false);
-                    resendButton.setAlpha(0.6f);
                 });
+                
+                // Update SharedPreferences with remaining time
+                long remainingTime = System.currentTimeMillis() + (cooldownSeconds * 1000);
+                sharedPrefs.edit().putLong(KEY_COOLDOWN_END_TIME, remainingTime).apply();
                 
                 try {
                     Thread.sleep(1000);
                 } catch (InterruptedException e) {
+                    android.util.Log.d("EmailVerification", "Cooldown timer interrupted");
                     break;
                 }
                 cooldownSeconds--;
@@ -746,9 +828,11 @@ public class EmailVerificationActivity extends AppCompatActivity {
                 if (cooldownText != null) {
                     cooldownText.setVisibility(android.view.View.GONE);
                 }
-                resendButton.setEnabled(true);
-                resendButton.setAlpha(1.0f);
-                android.util.Log.d("EmailVerification", "Resend button re-enabled after 60 second cooldown");
+                updateResendButtonState(true);
+                // Clear cooldown from SharedPreferences
+                sharedPrefs.edit().remove(KEY_COOLDOWN_END_TIME).apply();
+                isCooldownTimerRunning = false; // Mark as not running
+                android.util.Log.d("EmailVerification", "Resend button re-enabled after cooldown");
             });
         }).start();
     }
@@ -836,6 +920,10 @@ public class EmailVerificationActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
+        // Check and restore cooldown state when activity resumes
+        if (resendButton != null) {
+            checkAndRestoreCooldown();
+        }
         android.util.Log.d("EmailVerification", "Activity resumed - NOT sending new code");
         // Don't send new code on resume, only on initial load
     }

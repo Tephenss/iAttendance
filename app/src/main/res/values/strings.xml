@@ -36,4 +36,12 @@
     <!-- Navigation Drawer -->
     <string name="navigation_drawer_open">Open navigation drawer</string>
     <string name="navigation_drawer_close">Close navigation drawer</string>
+    
+    <!-- Server Configuration -->
+    <!-- IMPORTANT: Update this with your production server URL -->
+    <!-- Use HTTPS for production (recommended) -->
+    <!-- Example: https://yourdomain.com/test-backup2/teacher/ -->
+    <!-- For local testing: http://192.168.1.100/test-backup2/teacher/ -->
+    <!-- For production: https://yourdomain.com/test-backup2/teacher/ -->
+    <string name="server_base_url">http://192.168.1.100/test-backup2/teacher/</string>
 </resources>

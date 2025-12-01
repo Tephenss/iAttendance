@@ -66,6 +66,7 @@ public class TeacherDashboardActivity extends AppCompatActivity implements Navig
         });
 
         navigationView.setNavigationItemSelectedListener(this);
+        navigationView.setCheckedItem(R.id.nav_dashboard);
 
         // Get user data from intent
         String userId = getIntent().getStringExtra("userId");
@@ -100,32 +101,30 @@ public class TeacherDashboardActivity extends AppCompatActivity implements Navig
     @Override
     public boolean onNavigationItemSelected(@NonNull MenuItem item) {
         int id = item.getItemId();
+        Intent intent = null;
 
         if (id == R.id.nav_dashboard) {
-            // Dashboard selected (already on dashboard)
+            // Already on dashboard page
             drawerLayout.closeDrawer(GravityCompat.START);
             return true;
         } else if (id == R.id.nav_timetable) {
-            // Navigate to Teacher Timetable
-            Intent intent = new Intent(this, TeacherTimetableActivity.class);
-            intent.putExtra("userId", getIntent().getStringExtra("userId"));
-            intent.putExtra("userType", getIntent().getStringExtra("userType"));
-            intent.putExtra("fullName", getIntent().getStringExtra("fullName"));
-            intent.putExtra("email", getIntent().getStringExtra("email"));
-            startActivity(intent);
-            return true;
+            intent = new Intent(this, TeacherTimetableActivity.class);
         } else if (id == R.id.nav_students) {
-            // Navigate to My Students
-            Intent intent = new Intent(this, TeacherStudentsActivity.class);
-            intent.putExtra("userId", getIntent().getStringExtra("userId"));
-            intent.putExtra("userType", getIntent().getStringExtra("userType"));
-            intent.putExtra("fullName", getIntent().getStringExtra("fullName"));
-            intent.putExtra("email", getIntent().getStringExtra("email"));
-            startActivity(intent);
-            return true;
+            intent = new Intent(this, TeacherStudentsActivity.class);
+        } else if (id == R.id.nav_attendance) {
+            intent = new Intent(this, RfidAttendanceActivity.class);
         }
 
-        return false;
+        if (intent != null) {
+            intent.putExtra("userId", getIntent().getStringExtra("userId"));
+            intent.putExtra("userType", getIntent().getStringExtra("userType"));
+            intent.putExtra("fullName", getIntent().getStringExtra("fullName"));
+            intent.putExtra("email", getIntent().getStringExtra("email"));
+            startActivity(intent);
+        }
+
+        drawerLayout.closeDrawer(GravityCompat.START);
+        return true;
     }
 
     @Override
@@ -145,29 +144,20 @@ public class TeacherDashboardActivity extends AppCompatActivity implements Navig
             showPopupMenu(moreIcon);
         }
     }
-    
-    private void showPopupMenu(android.view.View view) {
-        android.widget.PopupMenu popupMenu = new android.widget.PopupMenu(new android.view.ContextThemeWrapper(this, R.style.PopupMenuStyle), view);
-        popupMenu.getMenuInflater().inflate(R.menu.toolbar_menu, popupMenu.getMenu());
-        
-        popupMenu.setGravity(android.view.Gravity.END);
-        
-        popupMenu.setOnMenuItemClickListener(item -> {
-            if (item.getItemId() == R.id.menu_logout) {
-                performLogout();
-                return true;
-            }
-            return false;
-        });
-        
-        popupMenu.show();
-    }
 
-    private void performLogout() {
-        sessionManager.logout();
-        Intent intent = new Intent(this, MainActivity.class);
-        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
-        startActivity(intent);
-        finish();
+    private void showPopupMenu(android.view.View view) {
+        PopupMenu popupMenu = new PopupMenu(this, view);
+        popupMenu.getMenu().add("Logout");
+        popupMenu.setOnMenuItemClickListener(item -> {
+            if (item.getTitle().toString().equals("Logout")) {
+                sessionManager.logout();
+                Intent intent = new Intent(this, MainActivity.class);
+                intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+                startActivity(intent);
+                finish();
+            }
+            return true;
+        });
+        popupMenu.show();
     }
 }

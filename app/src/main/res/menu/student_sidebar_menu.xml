@@ -10,6 +10,11 @@
             android:id="@+id/nav_timetable"
             android:icon="@drawable/ic_schedule"
             android:title="Timetable" />
+        
+        <item
+            android:id="@+id/nav_my_attendance"
+            android:icon="@drawable/ic_schedule"
+            android:title="My Attendance" />
     </group>
 
 </menu>
